@@ -1,0 +1,8 @@
+names = "deriving-typerepr"
+version = "0.1"
+description = "Deriving meta information on types"
+archive(byte) = "deriving_Typerepr.cmo"
+package "syntax" (
+  requires(syntax) = "deriving-ocsigen.syntax"
+  archive(preprocessor,syntax) = "pa_deriving_Typerepr.cmo"
+)
