@@ -75,43 +75,84 @@ module Builder (Loc : Defs.Loc) = struct
     inherit Generator.generator
 
     method proxy () =
-      None, [ <:ident< ty >> ]
+      None, [ <:ident< t >> ;
+              <:ident< dyn >> ]
 
     method tuple ctxt args =
-      let exprs = List.map (fun arg -> self#call_expr ctxt arg "t") args in
-      [ <:str_item< let t : Deriving_Typerepr.expr = `Tuple ($Helpers.expr_list exprs$) >> ]
+      let components =
+        match args with
+          | [ arg ] ->
+            <:expr< __singleton__ $self#call_expr ctxt arg "t"$ >>
+          | args ->
+            let components =
+              Helpers.expr_list @
+                flip List.mapi args @ fun ix arg ->
+                  let exp = self#call_expr ctxt arg "t" in
+                  <:expr< Any_component (__component__ $`int:ix$ $exp$) >>
+            in
+            <:expr<
+              __composed__ $components$
+            >>
+      in
+      let exp = <:expr< __tuple__ $components$ >> in
+      [ <:str_item<
+          let t = let open Deriving_Typerepr in $exp$
+        >> ]
 
     method record ?eq ctxt name args constraints fields =
-      (* let eq = flip option_map eq @ fun eq -> self#call_expr ctxt eq "t" in *)
       let fields =
-        flip List.map fields @ fun (name, (vars, expr), mutability) ->
-          let expr = self#call_expr ctxt expr "t" in
-          <:expr< $`str:name$, ($wrap_params (List.map fst vars)$, $expr$) >>
+        flip List.mapi fields @ fun ix (name, (vars, exp), mutability) ->
+          let exp = self#call_expr ctxt exp "t" in
+          <:expr< $`str:name$, Any_field (__field__ $`int:ix$ $exp$) >>
       in
-      let args = flip List.map args @ fun arg -> self#call_expr ctxt arg "t" in
-      [ <:str_item< let t : Deriving_Typerepr.expr = `Record $Helpers.expr_list fields$ >> ]
+      let exp = <:expr< __record__ $Helpers.expr_list fields$ >> in
+      [ <:str_item<
+          let rec t = let open Deriving_Typerepr in $exp$
+        >> ]
 
     method sum ?eq ctxt name args constraints summands =
-      (* let eq = flip option_map eq @ fun eq -> self#call_expr ctxt eq "t" in *)
       let summands =
-        flip List.map summands @ fun (name, exprs) ->
-          let exprs = flip List.map exprs @ fun expr ->
-            self#call_expr ctxt expr "t"
-          in
-          <:expr< $`str:name$, $Helpers.expr_list exprs$ >>
+        List.rev @ snd @
+          flip2 List.fold_left ((0,0), []) summands @
+            fun ((constant_ix, alloc_ix), sofar) (name, exps) ->
+              let constant_ix, alloc_ix, summand =
+                if exps = [] then
+                  succ constant_ix, alloc_ix,
+                  <:expr< __summand_constant__ $`int:constant_ix$ >>
+                else
+                  let exps =
+                    match exps with
+                      | [ exp ] ->
+                        let exp = self#call_expr ctxt exp "t" in
+                        <:expr< __singleton__ $exp$ >>
+                      | _ ->
+                        let components =
+                          flip List.mapi exps @ fun ix exp ->
+                            let exp = self#call_expr ctxt exp "t" in
+                            <:expr< Any_component (__component__ $`int:ix$ $exp$) >>
+                        in
+                        <:expr< __composed__ $Helpers.expr_list components$ >>
+                  in
+                  constant_ix, succ alloc_ix,
+                  <:expr< __summand_alloc__ $`int:alloc_ix$ $exps$ >>
+              in
+              (constant_ix, alloc_ix),
+              <:expr< $`str:name$, Any_summand $summand$ >> :: sofar
       in
-      let args = flip List.map args @ fun arg -> self#call_expr ctxt arg "t" in
-      [ <:str_item< let t : Deriving_Typerepr.expr = `Sum $Helpers.expr_list summands$ >> ]
+      let exp = <:expr< __sum__ $Helpers.expr_list summands$ >> in
+      [ <:str_item<
+          let rec t = let open Deriving_Typerepr in $exp$
+        >> ]
 
     method variant = Base.fatal_error _loc "Variants not yet supported"
     (* method class_ = Base.fatal_error _loc "Classes not yet supported" *)
     (* method object_ = Base.fatal_error _loc "Objects not yet supported" *)
     (* method label = Base.fatal_error _loc "Objects not yet supported" *)
 
-    (* method function_ ctxt (expr, expr') = *)
-    (*   let expr = self#call_expr ctxt expr "t" in *)
-    (*   let expr' = self#call_expr ctxt expr' "t" in *)
-    (*    [ <:str_item< let t = `Function ($expr$, $expr'$) >> ] *)
+    (* method function_ ctxt (exp, exp') = *)
+    (*   let exp = self#call_expr ctxt exp "t" in *)
+    (*   let exp' = self#call_expr ctxt exp' "t" in *)
+    (*    [ <:str_item< let t = `Function ($exp$, $exp'$) >> ] *)
 
   end :> Generator.generator)
 
