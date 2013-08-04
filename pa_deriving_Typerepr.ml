@@ -22,12 +22,8 @@ module Description : Defs.ClassDescription = struct
     ["unit" ], ["Deriving_Typerepr";"unit"];
     ["char" ], ["Deriving_Typerepr";"char"];
     ["int32" ], ["Deriving_Typerepr";"int32"];
-      (* ["Int32";"t"], ["Deriving_Typerepr";"int32"]; *)
     ["int64" ], ["Deriving_Typerepr";"int64"];
-      (* ["Int64";"t"], ["Deriving_Typerepr";"int64"]; *)
-      ["nativeint"], ["Deriving_Typerepr";"nativeint"];
     ["float" ], ["Deriving_Typerepr";"float"];
-      (* ["num" ], ["Deriving_num" ;"num"]; *)
     ["string" ], ["Deriving_Typerepr";"string"];
     ["list" ], ["Deriving_Typerepr";"list"];
     ["ref" ], ["Deriving_Typerepr";"ref"];
@@ -47,28 +43,6 @@ module Builder (Loc : Defs.Loc) = struct
 
   let wrap_params params =
     Helpers.expr_list (List.map (fun str -> <:expr< $`str:str$ >>) params)
-
-  (* let wrap_fresh ctxt ?eq params repr = *)
-  (*   let eq = *)
-  (*     match eq with *)
-  (*       | None -> <:expr< None >> *)
-  (*       | Some eq -> *)
-  (*         <:expr< Some $eq$ >> *)
-  (*   in *)
-  (*   [ <:str_item< *)
-  (*       let t = { *)
-  (*         params = $wrap_params params$ ; *)
-  (*         rhs = `Fresh ($eq$, $repr$); *)
-  (*       } *)
-  (*     >> ] *)
-
-  (* let wrap_expr ctxt expr = *)
-  (*   [ <:str_item< *)
-  (*       let t = { *)
-  (*         params = $wrap_params [] (\* params *\)$ ; *)
-  (*         rhs = `Expr expr *)
-  (*       } *)
-  (*     >> ] *)
 
   let generator = (object (self)
 
