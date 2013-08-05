@@ -1,30 +1,40 @@
 
-type ('a, 'b) field = Field : int * 'b t -> ('a, 'b) field
+type 'a atomic =
+  | Unit : unit atomic
+  | Int : int atomic
+  | Bool : bool atomic
+  | String : string atomic
+  | Float : float atomic
+  | Int32 : int32 atomic
+  | Int64 : int64 atomic
+
+type 'a t =
+  | Atomic : 'a atomic -> 'a t
+  | Tuple : 'a tuple -> 'a t
+  | Function : string option * 'a t * 'b t -> ('a -> 'b) t
+  | Ref : 'a t -> 'a ref t
+  | Option : 'a t -> 'a option t
+  | List : 'a t -> 'a list t
+  | Array : 'a t -> 'a array t
+  | Sum : 'a sum -> 'a t
+  | Record : 'a record -> 'a t
+
+and ('a, 'b) field = Field : int * 'b t -> ('a, 'b) field
 and 'a any_field = Any_field : ('a, _) field -> 'a any_field
 and 'a record = { fields : (string * 'a any_field) list }
 
 and ('a, 'b) summand =
-  | Summand_constant : int -> ('a, unit) summand
-  | Summand_alloc : int * 'b tuple -> ('a, 'b) summand
+  | Summand_nullary : int -> ('a, unit) summand
+  | Summand_unary : ('a, 'b) unary_summand -> ('a, 'b) summand
+  | Summand_nary : ('a, 'b) nary_summand -> ('a, 'b) summand
+and ('a, 'b) unary_summand = int * 'b t
+and ('a, 'b) nary_summand = int * 'b tuple
 and 'a any_summand = Any_summand : ('a, _) summand -> 'a any_summand
 and 'a sum = { summands : (string * 'a any_summand) list }
 
 and ('a, 'b) component = Component : 'b t * int -> ('a, 'b) component
 and 'a any_component = Any_component : ('a, _) component -> 'a any_component
-and 'a tuple =
-  | Singleton of 'a t
-  | Composed of 'a any_component list
-
-and _ t =
-  | Tuple : 'a tuple -> 'a t
-  | Function : string option * 'a t * 'b t -> ('a -> 'b) t
-  | Unit : unit t | Int : int t | Bool : bool t
-  | Int32 : int32 t | Int64 : int64 t | Float : float t
-  | String : string t | Option : 'a t -> 'a option t
-  | List : 'a t -> 'a list t | Array : 'a t -> 'a array t
-  | Ref : 'a t -> 'a ref t
-  | Sum : 'a sum -> 'a t
-  | Record : 'a record -> 'a t
+and 'a tuple = { components : 'a any_component list }
 
 type dyn = Dyn : 'a t * 'a -> dyn
 type dyn_tuple = Dyn_tuple : 'a tuple * 'a -> dyn_tuple
@@ -42,17 +52,17 @@ let list_index xs x =
   in
   aux 0 xs
 
-let get_record_field : type a b . (a, b) field -> a -> b t * b =
+let get_record_field : type a b . (a, b) field -> a -> b =
   fun field value ->
     match field with
       | Field (ix, t) ->
         let field_value = Obj.obj @ Obj.field (Obj.repr value) ix in
-        t, field_value
+        field_value
 
 let get_record_fields : type a . a record -> a -> (string * dyn) list =
   fun { fields } value ->
-    flip List.map fields @ fun (name, Any_field field) ->
-      let t, value = get_record_field field value in
+    flip List.map fields @ fun (name, Any_field (Field (_, t) as field)) ->
+      let value = get_record_field field value in
       name, Dyn (t, value)
 
 type 'a create_record_field = {
@@ -99,35 +109,36 @@ let get_sum_case_by_summand : type a b . (a, b) summand -> a -> b option =
   fun summand v ->
     let r = Obj.repr v in
     match summand with
-      | Summand_alloc (ix, tuple) ->
-        if Obj.is_block r then
-          match tuple with
-            | Singleton t ->
-              Some (Obj.obj @ Obj.field r 0)
-            | Composed components ->
-              let o = Obj.new_block 0 @ List.length components in
-              (flip List.iter components @ fun (Any_component component) ->
-                let Component (t, ix) = component in
-                Obj.set_field o ix (Obj.field r ix));
-              Some (Obj.obj o)
-        else
-          None
-      | Summand_constant ix ->
+      | Summand_nullary ix ->
         if Obj.is_int r && ix = Obj.obj r then
           Some ()
+        else
+          None
+      | Summand_unary (ix, t) ->
+        if Obj.is_block r then
+          Some (Obj.obj @ Obj.field r 0)
+        else
+          None
+      | Summand_nary (ix, { components }) ->
+        if Obj.is_block r then
+          let o = Obj.new_block 0 @ List.length components in
+          (flip List.iter components @ fun (Any_component component) ->
+            let Component (t, ix) = component in
+            Obj.set_field o ix (Obj.field r ix));
+          Some (Obj.obj o)
         else
           None
 
 let create_sum_case : type a b . (a, b) summand -> b -> a =
   fun summand arg ->
     match summand with
-      | Summand_constant ix ->
+      | Summand_nullary ix ->
         Obj.magic ix
-      | Summand_alloc (ix, Singleton t) ->
+      | Summand_unary (ix, t) ->
         let o = Obj.new_block ix 1 in
         Obj.set_field o 0 (Obj.repr arg);
         Obj.obj o
-      | Summand_alloc (ix, Composed components) ->
+      | Summand_nary (ix, { components}) ->
         let o = Obj.new_block ix (List.length components) in
         begin
           flip List.iter components @ fun (Any_component component) ->
@@ -153,7 +164,14 @@ let get_sum_case : type a b . a sum -> a -> string * a any_case_value =
 let rec show : type a . a t -> a -> string =
   fun t value ->
     match t with
-      | Tuple (Composed components) ->
+      | Atomic Unit -> "()"
+      | Atomic Bool -> if value then "true" else "false"
+      | Atomic Int -> string_of_int value
+      | Atomic Int32 -> Int32.to_string value
+      | Atomic Int64 -> Int64.to_string value
+      | Atomic Float -> string_of_float value
+      | Atomic String -> value
+      | Tuple { components } ->
         let ss =
           flip List.map (get_tuple_components components value) @ fun dyn ->
             let Dyn (t, value) = dyn in
@@ -161,14 +179,6 @@ let rec show : type a . a t -> a -> string =
         in
         "("^String.concat ", " ss^")"
       | Function _ -> failwith "<abstract>"
-      | Unit -> "()"
-      | Bool -> if value then "true" else "false"
-      | Tuple (Singleton t) -> show t value
-      | Int -> string_of_int value
-      | Int32 -> Int32.to_string value
-      | Int64 -> Int64.to_string value
-      | Float -> string_of_float value
-      | String -> value
       | Option t ->
         (match value with
         | None -> "None"
@@ -185,11 +195,6 @@ let rec show : type a . a t -> a -> string =
         "[|"^String.concat "; " ss^"|]"
       | Ref t ->
         "ref ("^show t !value^")"
-      | Sum sum ->
-        (match get_sum_case sum value with
-        | name, Any_case_value (Summand_constant _, ()) -> name
-        | name, Any_case_value (Summand_alloc (_, tuple), value) ->
-          name^" "^show (Tuple tuple) value)
       | Record record ->
         let ss =
           flip List.map (get_record_fields record value) @ fun (name, dyn) ->
@@ -197,19 +202,26 @@ let rec show : type a . a t -> a -> string =
             name^": "^show t value
         in
         "{"^String.concat "; " ss^"}"
+      | Sum sum ->
+        let name, any_case_value = get_sum_case sum value in
+        match any_case_value with
+          | Any_case_value (Summand_nullary _, ()) -> name
+          | Any_case_value (Summand_unary (_, t), value) -> show t value
+          | Any_case_value (Summand_nary (_, tuple), value) ->
+            name^" "^show (Tuple tuple) value
 
 module type Typerepr =
 sig
   type a
   val t : a t
 end
-module Typerepr_unit = struct type a = unit let t = Unit end
-module Typerepr_int = struct type a = int let t = Int end
-module Typerepr_bool = struct type a = bool let t = Bool end
-module Typerepr_int32 = struct type a = int32 let t = Int32 end
-module Typerepr_int64 = struct type a = int64 let t = Int64 end
-module Typerepr_float = struct type a = float let t = Float end
-module Typerepr_string = struct type a = string let t = String end
+module Typerepr_unit = struct type a = unit let t = Atomic Unit end
+module Typerepr_int = struct type a = int let t = Atomic Int end
+module Typerepr_bool = struct type a = bool let t = Atomic Bool end
+module Typerepr_int32 = struct type a = int32 let t = Atomic Int32 end
+module Typerepr_int64 = struct type a = int64 let t = Atomic Int64 end
+module Typerepr_float = struct type a = float let t = Atomic Float end
+module Typerepr_string = struct type a = string let t = Atomic String end
 module Typerepr_option (T : Typerepr) : Typerepr with type a = T.a option = struct
   type a = T.a option
   let t = Option T.t
@@ -229,10 +241,10 @@ end
 
 let __field__ ix t = Field (ix, t)
 let __record__ fields = Record { fields }
-let __summand_constant__ ix = Summand_constant ix
-let __summand_alloc__ ix tuple = Summand_alloc (ix, tuple)
+let __summand_nullary__ ix = Summand_nullary ix
+let __summand_unary__ ix t = Summand_unary (ix, t)
+let __summand_nary__ ix components = Summand_nary (ix, { components })
 let __sum__ summands = Sum { summands }
 let __component__ ix t = Component (t, ix)
-let __singleton__ t = Singleton t
-let __composed__ components = Composed components
-let __tuple__ tuple = Tuple tuple
+let __tuple__ components = Tuple { components }
+let __atomic__ atomic = Atomic atomic

@@ -53,22 +53,16 @@ module Builder (Loc : Defs.Loc) = struct
               <:ident< dyn >> ]
 
     method tuple ctxt args =
-      let components =
-        match args with
-          | [ arg ] ->
-            <:expr< __singleton__ $self#call_expr ctxt arg "t"$ >>
-          | args ->
-            let components =
-              Helpers.expr_list @
-                flip List.mapi args @ fun ix arg ->
-                  let exp = self#call_expr ctxt arg "t" in
-                  <:expr< Any_component (__component__ $`int:ix$ $exp$) >>
-            in
-            <:expr<
-              __composed__ $components$
-            >>
+      let exp =
+        let components =
+          flip List.mapi args @ fun ix arg ->
+            let exp = self#call_expr ctxt arg "t" in
+            <:expr< Any_component (__component__ $`int:ix$ $exp$) >>
+        in
+        <:expr<
+          __tuple__ $Helpers.expr_list components$
+        >>
       in
-      let exp = <:expr< __tuple__ $components$ >> in
       [ <:str_item<
           let t = let open Deriving_Typerepr in $exp$
         >> ]
@@ -92,23 +86,20 @@ module Builder (Loc : Defs.Loc) = struct
               let constant_ix, alloc_ix, summand =
                 if exps = [] then
                   succ constant_ix, alloc_ix,
-                  <:expr< __summand_constant__ $`int:constant_ix$ >>
+                  <:expr< __summand_nullary__ $`int:constant_ix$ >>
                 else
-                  let exps =
-                    match exps with
-                      | [ exp ] ->
-                        let exp = self#call_expr ctxt exp "t" in
-                        <:expr< __singleton__ $exp$ >>
+                  constant_ix, succ alloc_ix,
+                  match exps with
+                    | [ exp ] ->
+                      let exp = self#call_expr ctxt exp "t" in
+                      <:expr< __summand_unary__  $`int:alloc_ix$ $exp$ >>
                       | _ ->
                         let components =
                           flip List.mapi exps @ fun ix exp ->
                             let exp = self#call_expr ctxt exp "t" in
                             <:expr< Any_component (__component__ $`int:ix$ $exp$) >>
                         in
-                        <:expr< __composed__ $Helpers.expr_list components$ >>
-                  in
-                  constant_ix, succ alloc_ix,
-                  <:expr< __summand_alloc__ $`int:alloc_ix$ $exps$ >>
+                        <:expr< __summand_nary__  $`int:alloc_ix$ $Helpers.expr_list components$ >>
               in
               (constant_ix, alloc_ix),
               <:expr< $`str:name$, Any_summand $summand$ >> :: sofar
