@@ -95,10 +95,10 @@ let create_tuple : 'a . 'a any_component list -> 'a create_tuple_component -> 'a
     end;
     (Obj.obj o : a)
 
-let get_sum_case : 'a 'b . ('a, 'b) summand -> 'a -> 'b option =
-  fun (type a) (type b) summand v ->
+let get_sum_case_by_summand : type a b . (a, b) summand -> a -> b option =
+  fun summand v ->
     let r = Obj.repr v in
-    match (summand : (a, b) summand) with
+    match summand with
       | Summand_alloc (ix, tuple) ->
         if Obj.is_block r then
           match tuple with
@@ -109,7 +109,7 @@ let get_sum_case : 'a 'b . ('a, 'b) summand -> 'a -> 'b option =
               (flip List.iter components @ fun (Any_component component) ->
                 let Component (t, ix) = component in
                 Obj.set_field o ix (Obj.field r ix));
-              Some (Obj.obj o : b)
+              Some (Obj.obj o)
         else
           None
       | Summand_constant ix ->
@@ -135,22 +135,21 @@ let create_sum_case : 'a 'b . ('a, 'b) summand -> 'b -> 'a =
             Obj.set_field o ix (Obj.field (Obj.repr arg) ix)
         end;
         (Obj.obj o : a)
+        Obj.obj o
 
-let get_sum_cases : 'a . 'a sum -> 'a -> string * dyn_tuple option =
-  fun { summands } value ->
-    match
-      List.filter ((<>) None) @
-        flip List.map summands @ fun (name, Any_summand summand) ->
-          match summand, get_sum_case summand value with
-            | _, None -> None
-            | Summand_constant _, Some value ->
-              Some (name, None)
-            | Summand_alloc (_, tuple), Some value ->
-              Some (name, Some (Dyn_tuple (tuple, value)))
-    with
-      | [ Some (name, value) ] -> name, value
+type 'a any_case_value =
+  | Any_case_value : ('a, 'b) summand * 'b -> 'a any_case_value
+
+let get_sum_case : type a b . a sum -> a -> string * a any_case_value =
+  fun (type a) { summands } value ->
+    let rec aux = function
       | [] -> assert false
-      | _ -> assert false
+      | (name, Any_summand summand) :: summands ->
+        match get_sum_case_by_summand summand value with
+          | None -> aux summands
+          | Some value -> name, Any_case_value (summand, value)
+    in
+    aux summands
 
 let rec show : type a . a t -> a -> string =
   fun t value ->

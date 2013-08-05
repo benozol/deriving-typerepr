@@ -48,6 +48,10 @@ type any_t = Any_t : 'a t -> any_t
 
 val get_record_field : ('a, 'b) field -> 'a -> 'b t * 'b
 val get_record_fields : 'a record -> 'a -> (string * dyn) list
+type 'a any_case_value =
+  | Any_case_value : ('a, 'b) summand * 'b -> 'a any_case_value
+val get_sum_case : 'a sum -> 'a -> string * 'a any_case_value
+val get_sum_case_by_summand : ('a, 'b) summand ->'a -> 'b option
 type 'a create_record_field = {
   create_record_field : 'b. string -> ('a, 'b) field -> 'b;
 }
@@ -59,9 +63,7 @@ type 'a create_tuple_component = {
   create_tuple_component : 'b. ('a, 'b) component -> 'b;
 }
 val create_tuple : 'a any_component list -> 'a create_tuple_component -> 'a
-val get_sum_case : ('a, 'b) summand -> 'a -> 'b option
 val create_sum_case : ('a, 'b) summand -> 'b -> 'a
-val get_sum_cases : 'a sum -> 'a -> string * dyn_tuple option
 
 val show : 'a t -> 'a -> string
 
