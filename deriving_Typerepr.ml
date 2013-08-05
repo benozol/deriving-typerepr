@@ -42,14 +42,14 @@ let list_index xs x =
   in
   aux 0 xs
 
-let get_record_field : 'a . ('a, 'b) field -> 'a -> 'b t * 'b =
-  fun (type a) (type b) field value ->
-    match (field : (a, b) field) with
+let get_record_field : type a b . (a, b) field -> a -> b t * b =
+  fun field value ->
+    match field with
       | Field (ix, t) ->
         let field_value = Obj.obj @ Obj.field (Obj.repr value) ix in
-        t, (field_value :> b)
+        t, field_value
 
-let get_record_fields : 'a . 'a record -> 'a -> (string * dyn) list =
+let get_record_fields : type a . a record -> a -> (string * dyn) list =
   fun { fields } value ->
     flip List.map fields @ fun (name, Any_field field) ->
       let t, value = get_record_field field value in
@@ -59,21 +59,21 @@ type 'a create_record_field = {
   create_record_field : 'b . string -> ('a, 'b) field -> 'b;
 }
 
-let create_record : 'a . (string * 'a any_field) list -> 'a create_record_field -> 'a =
-  fun (type a) (fields : (_ * a any_field) list) f ->
+let create_record : type a . a record -> a create_record_field -> a =
+  fun { fields } f ->
     let o = Obj.new_block 0 (List.length fields) in
     begin
       flip List.iter fields @ fun (field_name, Any_field (Field (ix, _) as field)) ->
         Obj.set_field o ix @ Obj.repr @
           f.create_record_field field_name field
     end;
-    (Obj.obj o : a)
+    Obj.obj o
 
-let get_tuple_component : 'a 'b . ('a, 'b) component -> 'a -> 'b =
-  fun (type a) (type b) (component : (a, b) component) value ->
+let get_tuple_component : type a b . (a, b) component -> a -> b =
+  fun component value ->
     match component with
       | Component (t, ix) ->
-          (Obj.obj @ Obj.field (Obj.repr value) ix : b)
+          Obj.obj @ Obj.field (Obj.repr value) ix
 
 let get_tuple_components : 'a . 'a any_component list -> 'a -> dyn list =
   fun (type a) (components : a any_component list) value ->
@@ -85,15 +85,15 @@ let get_tuple_components : 'a . 'a any_component list -> 'a -> dyn list =
 type 'a create_tuple_component = {
   create_tuple_component : 'b . ('a, 'b) component -> 'b;
 }
-let create_tuple : 'a . 'a any_component list -> 'a create_tuple_component -> 'a =
-  fun (type a) (components : a any_component list) f ->
+let create_tuple : type a . a any_component list -> a create_tuple_component -> a =
+  fun components f ->
     let o = Obj.new_block 0 (List.length components) in
     begin
       flip List.iteri components @ fun ix (Any_component component) ->
         Obj.set_field o ix
           (Obj.repr @ f.create_tuple_component component)
     end;
-    (Obj.obj o : a)
+    Obj.obj o
 
 let get_sum_case_by_summand : type a b . (a, b) summand -> a -> b option =
   fun summand v ->
@@ -118,15 +118,15 @@ let get_sum_case_by_summand : type a b . (a, b) summand -> a -> b option =
         else
           None
 
-let create_sum_case : 'a 'b . ('a, 'b) summand -> 'b -> 'a =
-  fun (type a) (type b) (summand : (a, b) summand) (arg : b) ->
+let create_sum_case : type a b . (a, b) summand -> b -> a =
+  fun summand arg ->
     match summand with
       | Summand_constant ix ->
-        (Obj.magic ix : a)
+        Obj.magic ix
       | Summand_alloc (ix, Singleton t) ->
         let o = Obj.new_block ix 1 in
         Obj.set_field o 0 (Obj.repr arg);
-        (Obj.obj o : a)
+        Obj.obj o
       | Summand_alloc (ix, Composed components) ->
         let o = Obj.new_block ix (List.length components) in
         begin
@@ -134,7 +134,6 @@ let create_sum_case : 'a 'b . ('a, 'b) summand -> 'b -> 'a =
             let Component (t, ix) = component in
             Obj.set_field o ix (Obj.field (Obj.repr arg) ix)
         end;
-        (Obj.obj o : a)
         Obj.obj o
 
 type 'a any_case_value =
@@ -153,52 +152,51 @@ let get_sum_case : type a b . a sum -> a -> string * a any_case_value =
 
 let rec show : type a . a t -> a -> string =
   fun t value ->
-  match t with
-    | Tuple (Composed components) ->
-      let ss =
-        flip List.map (get_tuple_components components value) @ fun dyn ->
-          let Dyn (t, value) = dyn in
-          show t value
-      in
-      "("^String.concat ", " ss^")"
-    | Function _ -> failwith "Deriving_Typerepr.show: function"
-    | Unit -> "()"
-    | Bool -> if value then "true" else "false"
-    | Tuple (Singleton t) -> show t value
-    | Int -> string_of_int value
-    | Int32 -> Int32.to_string value
-    | Int64 -> Int64.to_string value
-    | Float -> string_of_float value
-    | String -> value
-    | Option t ->
-      (match value with
+    match t with
+      | Tuple (Composed components) ->
+        let ss =
+          flip List.map (get_tuple_components components value) @ fun dyn ->
+            let Dyn (t, value) = dyn in
+            show t value
+        in
+        "("^String.concat ", " ss^")"
+      | Function _ -> failwith "<abstract>"
+      | Unit -> "()"
+      | Bool -> if value then "true" else "false"
+      | Tuple (Singleton t) -> show t value
+      | Int -> string_of_int value
+      | Int32 -> Int32.to_string value
+      | Int64 -> Int64.to_string value
+      | Float -> string_of_float value
+      | String -> value
+      | Option t ->
+        (match value with
         | None -> "None"
         | Some value -> "Some ("^show t value^")")
-    | List t ->
-      let ss =
-        flip List.map value @ show t
-      in
-      "["^String.concat "; " ss^"]"
-    | Array t ->
-      let ss =
-        flip List.map (Array.to_list value) @ show t
-      in
-      "[|"^String.concat "; " ss^"|]"
-    | Ref t ->
-      "ref ("^show t !value^")"
-    | Sum sum ->
-      (match get_sum_cases sum value with
-        | name, None -> name
-        | name, Some tuple ->
-          let Dyn_tuple (t, value) = tuple in
-          name^" "^show (Tuple t) value)
-    | Record record ->
-      let ss =
-        flip List.map (get_record_fields record value) @ fun (name, dyn) ->
-          let Dyn (t, value) = dyn in
-          name^": "^show t value
-      in
-      "{"^String.concat "; " ss^"}"
+      | List t ->
+        let ss =
+          flip List.map value @ show t
+        in
+        "["^String.concat "; " ss^"]"
+      | Array t ->
+        let ss =
+          flip List.map (Array.to_list value) @ show t
+        in
+        "[|"^String.concat "; " ss^"|]"
+      | Ref t ->
+        "ref ("^show t !value^")"
+      | Sum sum ->
+        (match get_sum_case sum value with
+        | name, Any_case_value (Summand_constant _, ()) -> name
+        | name, Any_case_value (Summand_alloc (_, tuple), value) ->
+          name^" "^show (Tuple tuple) value)
+      | Record record ->
+        let ss =
+          flip List.map (get_record_fields record value) @ fun (name, dyn) ->
+            let Dyn (t, value) = dyn in
+            name^": "^show t value
+        in
+        "{"^String.concat "; " ss^"}"
 
 module type Typerepr =
 sig

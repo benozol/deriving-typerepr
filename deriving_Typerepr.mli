@@ -1,5 +1,5 @@
 
-(** Structural representation of types *)
+(** {1 Structural representation of types} *)
 
 type ('a, 'b) field = private
   | Field : int * 'b t -> ('a, 'b) field
@@ -39,50 +39,57 @@ and _ t = private
   | Ref : 'a t -> 'a ref t
   | Sum : 'a sum -> 'a t
   | Record : 'a record -> 'a t
+type any_t = Any_t : 'a t -> any_t
+
+module type Typerepr = sig type a val t : a t end
+
+(** {2 Dynamically values} *)
 
 type dyn = private
   | Dyn : 'a t * 'a -> dyn
 type dyn_tuple = private
   | Dyn_tuple : 'a tuple * 'a -> dyn_tuple
-type any_t = Any_t : 'a t -> any_t
+
+(** {2 Inspection} *)
 
 val get_record_field : ('a, 'b) field -> 'a -> 'b t * 'b
 val get_record_fields : 'a record -> 'a -> (string * dyn) list
+val get_tuple_component : ('a, 'b) component -> 'a -> 'b
+val get_tuple_components : 'a any_component list -> 'a -> dyn list
 type 'a any_case_value =
   | Any_case_value : ('a, 'b) summand * 'b -> 'a any_case_value
 val get_sum_case : 'a sum -> 'a -> string * 'a any_case_value
 val get_sum_case_by_summand : ('a, 'b) summand ->'a -> 'b option
+
+(** {2 Creation} *)
+
 type 'a create_record_field = {
   create_record_field : 'b. string -> ('a, 'b) field -> 'b;
 }
-val create_record :
-  (string * 'a any_field) list -> 'a create_record_field -> 'a
-val get_tuple_component : ('a, 'b) component -> 'a -> 'b
-val get_tuple_components : 'a any_component list -> 'a -> dyn list
+val create_record : 'a record -> 'a create_record_field -> 'a
 type 'a create_tuple_component = {
   create_tuple_component : 'b. ('a, 'b) component -> 'b;
 }
 val create_tuple : 'a any_component list -> 'a create_tuple_component -> 'a
 val create_sum_case : ('a, 'b) summand -> 'b -> 'a
 
-val show : 'a t -> 'a -> string
+(** {2 Predefined representations} *)
 
-module type Typerepr = sig type a val t : a t end
-module Typerepr_unit : sig type a = unit val t : unit t end
-module Typerepr_int : sig type a = int val t : int t end
-module Typerepr_bool : sig type a = bool val t : bool t end
-module Typerepr_int32 : sig type a = int32 val t : int32 t end
-module Typerepr_int64 : sig type a = int64 val t : int64 t end
-module Typerepr_float : sig type a = float val t : float t end
-module Typerepr_string : sig type a = string val t : string t end
-module Typerepr_option :
-  functor (T : Typerepr) -> sig type a = T.a option val t : a t end
-module Typerepr_list :
-  functor (T : Typerepr) -> sig type a = T.a list val t : a t end
-module Typerepr_array :
-  functor (T : Typerepr) -> sig type a = T.a array val t : a t end
-module Typerepr_ref :
-  functor (T : Typerepr) -> sig type a = T.a ref val t : a t end
+module Typerepr_unit : Typerepr with type a = unit
+module Typerepr_int : Typerepr with type a = int
+module Typerepr_bool : Typerepr with type a = bool
+module Typerepr_int32 : Typerepr with type a = int32
+module Typerepr_int64 : Typerepr with type a = int64
+module Typerepr_float : Typerepr with type a = float
+module Typerepr_string : Typerepr with type a = string
+module Typerepr_option : functor (T : Typerepr) -> Typerepr with type a = T.a option
+module Typerepr_list : functor (T : Typerepr) -> Typerepr with type a = T.a list
+module Typerepr_array : functor (T : Typerepr) -> Typerepr with type a = T.a array
+module Typerepr_ref : functor (T : Typerepr) -> Typerepr with type a = T.a ref
+
+(** {2 Auxiliaries} *)
+
+val show : 'a t -> 'a -> string
 
 (**/**)
 
