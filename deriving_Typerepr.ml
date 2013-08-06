@@ -117,42 +117,29 @@ let get_sum_case_by_summand : type a b . (a, b) summand -> a -> b option =
   fun summand v ->
     let r = Obj.repr v in
     match summand with
-      | Summand_nullary ix ->
-        if Obj.is_int r && ix = Obj.obj r then
-          Some ()
-        else
-          None
-      | Summand_unary (ix, t) ->
-        if Obj.is_block r then
-          Some (Obj.obj @ Obj.field r 0)
-        else
-          None
-      | Summand_nary (ix, { components }) ->
-        if Obj.is_block r then
-          let o = Obj.new_block 0 @ List.length components in
-          (flip List.iter components @ fun (Any_component component) ->
-            let Component (t, ix) = component in
-            Obj.set_field o ix (Obj.field r ix));
-          Some (Obj.obj o)
-        else
-          None
+      | Summand_nullary ix when Obj.is_int r && ix = Obj.obj r ->
+        Some ()
+      | Summand_unary (ix, _) when Obj.is_block r && ix = Obj.tag r ->
+        Some (Obj.obj @ Obj.field r 0)
+      | Summand_nary (ix, _) when Obj.is_block r && ix = Obj.tag r ->
+        let o = Obj.dup r in
+        Obj.set_tag o ix;
+        Some (Obj.obj o)
+      | _ -> None
 
 let create_sum_case : type a b . (a, b) summand -> b -> a =
   fun summand arg ->
+    let r = Obj.repr arg in
     match summand with
       | Summand_nullary ix ->
         Obj.magic ix
       | Summand_unary (ix, t) ->
         let o = Obj.new_block ix 1 in
-        Obj.set_field o 0 (Obj.repr arg);
+        Obj.set_field o 0 r;
         Obj.obj o
       | Summand_nary (ix, { components}) ->
-        let o = Obj.new_block ix (List.length components) in
-        begin
-          flip List.iter components @ fun (Any_component component) ->
-            let Component (t, ix) = component in
-            Obj.set_field o ix (Obj.field (Obj.repr arg) ix)
-        end;
+        let o = Obj.dup r in
+        Obj.set_tag o ix;
         Obj.obj o
 
 type 'a any_case_value =
