@@ -1,5 +1,5 @@
 
-(** {1 Structural representation of types} *)
+(** {1 Structural representations of types} *)
 
 type 'a atomic =
   | Unit : unit atomic
@@ -10,14 +10,14 @@ type 'a atomic =
   | Int32 : int32 atomic
   | Int64 : int64 atomic
 
-type 'a t =
+type 'a t = private
   | Atomic : 'a atomic -> 'a t
   | Tuple : 'a tuple -> 'a t
   | Function : string option * 'a t * 'b t -> ('a -> 'b) t
-  | Ref : 'a t -> 'a ref t
-  | Option : 'a t -> 'a option t
   | List : 'a t -> 'a list t
+  | Option : 'a t -> 'a option t
   | Array : 'a t -> 'a array t
+  | Ref : 'a t -> 'a ref t
   | Sum : 'a sum -> 'a t
   | Record : 'a record -> 'a t
 
@@ -46,8 +46,6 @@ and 'a record = private
     { fields : (string * 'a any_field) list; }
 
 type any_t = Any_t : 'a t -> any_t
-
-module type Typerepr = sig type a val t : a t end
 
 (** {2 Dynamically values} *)
 
@@ -78,7 +76,36 @@ type 'a any_case_value =
   | Any_case_value : ('a, 'b) summand * 'b -> 'a any_case_value
 val get_sum_case : 'a sum -> 'a -> string * 'a any_case_value
 val get_sum_case_by_summand : ('a, 'b) summand ->'a -> 'b option
-(** {2 Predefined representations} *)
+
+(** {2 Paths to components} *)
+
+(** A value of type [('w, 'a, 'b, 'c) p] encodes the path from
+    a value of type ['a] to one of type ['c], where ['a] is directly
+    embedded in one of ['w] and ['c] in ['b]. *)
+type ('w, 'a, 'b, 'c) p =
+  | Root : ('w, 'a, 'w, 'a) p
+  | Tuple_component : ('b, 'c) component * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
+  | List_item : int * ('w, 'a, _, 'c list) p -> ('w, 'a, 'c list, 'c) p
+  | Array_item : int * ('w, 'a, _, 'c array) p -> ('w, 'a, 'c array, 'c) p
+  | Case_unary : ('b, 'c) unary_summand * ('w, 'a, _, 'b) p  -> ('w, 'a, 'b, 'c) p
+  | Case_nary : ('d, 'c) component * ('b, 'd) nary_summand * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
+  | Record_field : ('b, 'c) field * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
+  | Option_some : ('w, 'a, _, 'c option) p -> ('w, 'a, 'c option, 'c) p
+  | Ref_content : ('w, 'a, _, 'c ref) p -> ('w, 'a, 'c ref, 'c) p
+
+val get : 'a -> (_, 'a, _, 'c) p -> 'c option
+
+val compose : ('w1, 'a1, 'b2, 'a2) p -> ('b2, 'a2, 'b3, 'a3) p -> ('w1, 'a1, 'b3, 'a3) p
+
+type ('w, 'a, 'acc) folder = {
+  folder : 'c 'b . 'acc -> 'c -> 'c t -> ('w, 'a, 'b, 'c) p  -> 'acc
+}
+
+val fold : ('w, 'a, 'acc) folder -> 'acc -> 'a -> 'a t -> 'acc
+
+(** {2 Predefined type representations} *)
+
+module type Typerepr = sig type a val t : a t end
 
 module Typerepr_unit : Typerepr with type a = unit
 module Typerepr_int : Typerepr with type a = int
@@ -91,6 +118,7 @@ module Typerepr_option : functor (T : Typerepr) -> Typerepr with type a = T.a op
 module Typerepr_list : functor (T : Typerepr) -> Typerepr with type a = T.a list
 module Typerepr_array : functor (T : Typerepr) -> Typerepr with type a = T.a array
 module Typerepr_ref : functor (T : Typerepr) -> Typerepr with type a = T.a ref
+
 
 (** {2 Auxiliaries} *)
 

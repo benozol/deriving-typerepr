@@ -1,4 +1,24 @@
 
+external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
+let (@@) = List.append
+let flip f x y = f y x
+external identity : 'a -> 'a = "%identity"
+module Option = struct
+  let map f = function
+    | Some x -> Some (f x)
+    | None -> None
+  let bind f = function
+    | Some x -> f x
+    | None -> None
+end
+let list_index xs x =
+  let rec aux ix = function
+    | [] -> raise Not_found
+    | x' :: _ when x = x' -> ix
+    | _ :: xs -> aux (succ ix) xs
+  in
+  aux 0 xs
+
 type 'a atomic =
   | Unit : unit atomic
   | Int : int atomic
@@ -12,10 +32,10 @@ type 'a t =
   | Atomic : 'a atomic -> 'a t
   | Tuple : 'a tuple -> 'a t
   | Function : string option * 'a t * 'b t -> ('a -> 'b) t
-  | Ref : 'a t -> 'a ref t
-  | Option : 'a t -> 'a option t
   | List : 'a t -> 'a list t
+  | Option : 'a t -> 'a option t
   | Array : 'a t -> 'a array t
+  | Ref : 'a t -> 'a ref t
   | Sum : 'a sum -> 'a t
   | Record : 'a record -> 'a t
 
@@ -39,18 +59,6 @@ and 'a tuple = { components : 'a any_component list }
 type dyn = Dyn : 'a t * 'a -> dyn
 type dyn_tuple = Dyn_tuple : 'a tuple * 'a -> dyn_tuple
 type any_t = Any_t : 'a t -> any_t
-
-external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
-let (@@) = List.append
-let flip f x y = f y x
-
-let list_index xs x =
-  let rec aux ix = function
-    | [] -> raise Not_found
-    | x' :: _ when x = x' -> ix
-    | _ :: xs -> aux (succ ix) xs
-  in
-  aux 0 xs
 
 let get_record_field : type a b . (a, b) field -> a -> b =
   fun field value ->
@@ -210,6 +218,158 @@ let rec show : type a . a t -> a -> string =
           | Any_case_value (Summand_nary (_, tuple), value) ->
             name^" "^show (Tuple tuple) value
 
+
+type ('w, 'a, 'b, 'c) p =
+  | Root : ('w, 'a, 'w, 'a) p
+  | Tuple_component : ('b, 'c) component * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
+  | List_item : int * ('w, 'a, _, 'c list) p -> ('w, 'a, 'c list, 'c) p
+  | Array_item : int * ('w, 'a, _, 'c array) p -> ('w, 'a, 'c array, 'c) p
+  | Case_unary : ('b, 'c) unary_summand * ('w, 'a, _, 'b) p  -> ('w, 'a, 'b, 'c) p
+  | Case_nary : ('d, 'c) component * ('b, 'd) nary_summand * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
+  | Record_field : ('b, 'c) field * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
+  | Option_some : ('w, 'a, _, 'c option) p -> ('w, 'a, 'c option, 'c) p
+  | Ref_content : ('w, 'a, _, 'c ref) p -> ('w, 'a, 'c ref, 'c) p
+
+let rec get : type w a b c . a -> (w, a, b, c) p -> c option =
+  fun value path ->
+    match path with
+      | Tuple_component (component, path) ->
+        Option.map
+          (get_tuple_component component)
+          (get value path)
+      | List_item (ix, path) ->
+        Option.map
+          (flip List.nth ix)
+          (get value path)
+      | Array_item (ix, path) ->
+        Option.map
+          (flip Array.get ix)
+          (get value path)
+      | Case_unary (unary_summand, path) ->
+        Option.bind
+          (get_sum_case_by_summand (Summand_unary unary_summand))
+          (get value path)
+      | Case_nary (component, (_, { components } as nary_summand), path) ->
+        Option.map
+          (get_tuple_component component)
+          (Option.bind
+             (get_sum_case_by_summand (Summand_nary nary_summand))
+             (get value path))
+      | Record_field (field, path) ->
+        Option.map
+          (get_record_field field)
+          (get value path)
+      | Option_some path ->
+        Option.bind identity
+          (get value path)
+      | Ref_content path ->
+        Option.map
+          (fun ref -> !ref)
+          (get value path)
+      | Root -> Some value
+
+let rec compose : type w1 a1 a2 a3 b2 b3 . (w1, a1, b2, a2) p -> (b2, a2, b3, a3) p -> (w1, a1, b3, a3) p =
+  fun pos1 pos2 ->
+    match pos2 with
+      | Tuple_component (component, pos2) ->
+        let pos3 = compose pos1 pos2 in
+        Tuple_component (component, pos3)
+      | List_item (ix, pos2) ->
+        let pos3 = compose pos1 pos2 in
+        List_item (ix, pos3)
+      | Option_some pos2 ->
+        let pos3 = compose pos1 pos2 in
+        Option_some pos3
+      | Array_item (ix, pos2) ->
+        let pos3 = compose pos1 pos2 in
+        Array_item (ix, pos3)
+      | Case_unary (summand, pos2) ->
+        let pos3 = compose pos1 pos2 in
+        Case_unary (summand, pos3)
+      | Case_nary (component, summand, pos2) ->
+        let pos3 = compose pos1 pos2 in
+        Case_nary (component, summand, pos3)
+      | Record_field (field, pos2) ->
+        let pos3 = compose pos1 pos2 in
+        Record_field (field, pos3)
+      | Ref_content pos2 ->
+        let pos3 = compose pos1 pos2 in
+        Ref_content pos3
+      | Root -> pos1
+
+type ('w, 'a, 'acc) folder = {
+  folder : 'c 'b . 'acc -> 'c -> 'c t -> ('w, 'a, 'b, 'c) p  -> 'acc
+}
+
+let fold f init value t =
+  let rec aux : type b c . 'acc -> c t -> c -> ('w, 'root, b, c) p -> 'acc =
+    fun sofar t value path ->
+      let sofar =
+        match t with
+          | Atomic _ -> sofar
+          | Tuple { components } ->
+            let folder sofar (Any_component (Component (t, ix) as component)) =
+              let value = get_tuple_component component value in
+              aux sofar t value @
+                Tuple_component (component, path)
+            in
+            List.fold_left folder sofar components
+          | Option t -> begin
+              match value with
+                | None -> sofar
+                | Some value ->
+                  let path = Option_some path in
+                  aux sofar t value path
+            end
+          | List t ->
+            let folder sofar (ix, value) =
+              aux sofar t value @
+                List_item (ix, path)
+            in
+            List.fold_left folder sofar @
+              flip List.mapi value @
+                fun ix value -> ix, value
+          | Array t ->
+            let folder sofar (ix, value) =
+              aux sofar t value @
+                Array_item (ix, path)
+            in
+            Array.fold_left folder sofar @
+              flip Array.mapi value @
+                fun ix value -> ix, value
+          | Ref t ->
+            aux sofar t !value @
+              Ref_content path
+          | Sum sum ->
+            let name, Any_case_value (summand, value) = get_sum_case sum value in begin
+              match summand with
+                | Summand_nullary ix ->
+                  sofar
+                | Summand_unary unary_summand ->
+                  let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+                  aux sofar t value @
+                    Case_unary (unary_summand, path)
+                | Summand_nary nary_summand ->
+                  let _, { components } = (nary_summand : (_,_) nary_summand :> _ * _) in
+                  let folder sofar (Any_component (Component (t, ix) as component)) =
+                    let value = get_tuple_component component value in
+                    aux sofar t value @
+                      Case_nary (component, nary_summand, path)
+                  in
+                  List.fold_left folder sofar components
+            end
+          | Record { fields } ->
+            let folder sofar (name, Any_field (Field (_, t) as field)) =
+              let value = get_record_field field value in
+              aux sofar t value @
+                Record_field (field, path)
+            in
+            List.fold_left folder sofar fields
+          | Function _ -> failwith "Deriving_Typerepr.fold"
+    in
+    f.folder sofar value t path
+  in
+  aux init t value Root
 module type Typerepr =
 sig
   type a
