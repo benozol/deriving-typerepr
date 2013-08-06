@@ -165,7 +165,7 @@ let rec show : type a . a t -> a -> string =
       | Atomic Int32 -> Int32.to_string value
       | Atomic Int64 -> Int64.to_string value
       | Atomic Float -> string_of_float value
-      | Atomic String -> value
+      | Atomic String -> "\""^String.escaped value^"\""
       | Tuple { components } ->
         let ss =
           flip List.map (get_tuple_components components value) @ fun dyn ->
@@ -201,7 +201,7 @@ let rec show : type a . a t -> a -> string =
         let name, any_case_value = get_sum_case sum value in
         match any_case_value with
           | Any_case_value (Summand_nullary _, ()) -> name
-          | Any_case_value (Summand_unary (_, t), value) -> show t value
+          | Any_case_value (Summand_unary (_, t), value) -> name^" "^show t value
           | Any_case_value (Summand_nary (_, tuple), value) ->
             name^" "^show (Tuple tuple) value
 

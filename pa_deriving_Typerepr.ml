@@ -1,6 +1,5 @@
 
 open Pa_deriving_common
-(* open Utils *)
 
 external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
 let (@@) = List.append

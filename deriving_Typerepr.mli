@@ -69,7 +69,6 @@ val create_sum_case : ('a, 'b) summand -> 'b -> 'a
 (** {2 Inspection} *)
 
 val get_record_field : ('a, 'b) field -> 'a -> 'b
-val get_record_fields : 'a record -> 'a -> (string * dyn) list
 val get_tuple_component : ('a, 'b) component -> 'a -> 'b
 val get_tuple_components : 'a any_component list -> 'a -> dyn list
 type 'a any_case_value =
