@@ -212,7 +212,7 @@ type ('a, 'b) p =
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
   | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
-  | Case_nary : ('c, 'd) component * ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'd) p
+  | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
   | Option_some : ('a, 'b option) p -> ('a, 'b) p
   | Ref_content : ('a, 'b ref) p -> ('a, 'b) p
@@ -236,12 +236,10 @@ let rec get : type a b . a -> (a, b) p -> b option =
         Option.bind
           (get_sum_case_by_summand (Summand_unary unary_summand))
           (get value path)
-      | Case_nary (component, (_, { components } as nary_summand), path) ->
-        Option.map
-          (get_tuple_component component)
-          (Option.bind
-             (get_sum_case_by_summand (Summand_nary nary_summand))
-             (get value path))
+      | Case_nary ((_, { components } as nary_summand), path) ->
+        Option.bind
+          (get_sum_case_by_summand (Summand_nary nary_summand))
+          (get value path)
       | Record_field (field, path) ->
         Option.map
           (get_record_field field)
@@ -273,9 +271,9 @@ let rec compose : type a b c . (b, c) p -> (a, b) p -> (a, c) p =
       | Case_unary (summand, path1) ->
         let pos3 = compose path1 path2 in
         Case_unary (summand, pos3)
-      | Case_nary (component, summand, path1) ->
+      | Case_nary (summand, path1) ->
         let pos3 = compose path1 path2 in
-        Case_nary (component, summand, pos3)
+        Case_nary (summand, pos3)
       | Record_field (field, path1) ->
         let pos3 = compose path1 path2 in
         Record_field (field, pos3)
@@ -338,10 +336,10 @@ let fold f init value t =
                     Case_unary (unary_summand, path)
                 | Summand_nary nary_summand ->
                   let _, { components } = (nary_summand : (_,_) nary_summand :> _ * _) in
+                  let path = Case_nary (nary_summand, path) in
                   let folder sofar (Any_component (Component (t, ix) as component)) =
                     let value = get_tuple_component component value in
-                    aux sofar t value @
-                      Case_nary (component, nary_summand, path)
+                    aux sofar t value @ Tuple_component (component, path)
                   in
                   List.fold_left folder sofar components
             end

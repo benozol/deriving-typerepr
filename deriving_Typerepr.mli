@@ -86,7 +86,7 @@ type ('a, 'b) p =
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
   | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
-  | Case_nary : ('c, 'd) component * ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'd) p
+  | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
   | Option_some : ('a, 'b option) p -> ('a, 'b) p
   | Ref_content : ('a, 'b ref) p -> ('a, 'b) p
