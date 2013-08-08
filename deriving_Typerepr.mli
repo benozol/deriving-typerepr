@@ -101,6 +101,18 @@ type ('a, 'acc) folder = {
 
 val fold : ('a, 'acc) folder -> 'acc -> 'a -> 'a t -> 'acc
 
+(** {2 Auxiliaries} *)
+
+val show : 'a t -> 'a -> string
+
+(** {3 Path construction}
+    The following functions raise [Not_found] if the component doesn't
+    exist and [Failure _] when the type doesn't match. *)
+val the_field : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+val the_unary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+val the_nary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+val the_component : 'b t -> int -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+
 (** {2 Predefined type representations} *)
 
 module type Typerepr = sig type a val t : a t end
@@ -116,11 +128,6 @@ module Typerepr_option : functor (T : Typerepr) -> Typerepr with type a = T.a op
 module Typerepr_list : functor (T : Typerepr) -> Typerepr with type a = T.a list
 module Typerepr_array : functor (T : Typerepr) -> Typerepr with type a = T.a array
 module Typerepr_ref : functor (T : Typerepr) -> Typerepr with type a = T.a ref
-
-
-(** {2 Auxiliaries} *)
-
-val show : 'a t -> 'a -> string
 
 (**/**)
 

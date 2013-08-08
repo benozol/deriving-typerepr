@@ -2,6 +2,7 @@
 external (@) : ('a -> 'b) -> 'a -> 'b = "%apply"
 let (@@) = List.append
 let flip f x y = f y x
+let flip2 f x y z = f z x y
 external identity : 'a -> 'a = "%identity"
 module Option = struct
   let map f = function
@@ -355,6 +356,98 @@ let fold f init value t =
     f.folder sofar value t path
   in
   aux init t value Root
+
+let rec eq : type a b . a t -> b t -> bool =
+  let eq_atomic : type a b . a atomic -> b atomic -> bool =
+    fun a1 a2 ->
+      match a1, a2 with
+        | Unit, Unit -> true
+        | Int, Int -> true
+        | Bool, Bool -> true
+        | String, String -> true
+        | Float, Float -> true
+        | Int32, Int32 -> true
+        | Int64, Int64 -> true
+        | _ -> false
+  in
+  let eq_tuple : type a b . a tuple -> b tuple -> bool =
+    fun { components = cs1 } { components = cs2 } ->
+      let tester (Any_component (Component (t1, _))) (Any_component (Component (t2, _))) =
+        eq t1 t2
+      in
+      List.length cs1 = List.length cs2 &&
+        List.for_all2 tester cs1 cs2
+  in
+  let eq_sum : type a b . a sum -> b sum -> bool =
+    fun { summands = ss1 } { summands = ss2 } ->
+      List.length ss1 = List.length ss2 &&
+        flip2 List.for_all2 ss1 ss2 @
+          fun (n1, Any_summand s1) (n2, Any_summand s2) ->
+            n1 = n2 &&
+              match s1, s2 with
+                | Summand_nullary _, Summand_nullary _ -> true
+                | Summand_unary (_, t1), Summand_unary (_, t2) -> eq t1 t2
+                | Summand_nary (_, tu1), Summand_nary (_, tu2) -> eq_tuple tu1 tu2
+                | _  -> false
+  in
+  let eq_record : type a b . a record -> b record -> bool =
+    fun { fields = fs1 } { fields = fs2 } ->
+      List.length fs1 = List.length fs2 &&
+        flip2 List.for_all2 fs1 fs2 @
+          fun (n1, Any_field (Field (_, t1))) (n2, Any_field (Field (_, t2))) ->
+            n1 = n2 && eq t1 t2
+  in
+  fun t1 t2 ->
+    match t1, t2 with
+      | Atomic a1, Atomic a2 -> eq_atomic a1 a2
+      | Function (opt1, arg1, res1), Function (opt2, arg2, res2) when opt1 = opt2 ->
+        eq arg1 arg2 && eq res1 res2
+      | List t1, List t2 -> eq t1 t2
+      | Option t1, Option t2 -> eq t1 t2
+      | Array t1, Array t2 -> eq t1 t2
+      | Ref t1, Ref t2 -> eq t1 t2
+      | Tuple tu1, Tuple tu2 -> eq_tuple tu1 tu2
+      | Sum s1, Sum s2 -> eq_sum s1 s2
+      | Record r1, Record r2 -> eq_record r1 r2
+      | _ -> false
+
+let the_field t name t1 =
+  match t with
+    | Record { fields } ->
+      let Any_field (Field (ix, t2)) = List.assoc name fields in
+      if eq t1 t2 then
+        fun p -> Record_field (Field (ix, t1), p)
+      else
+        failwith "Deriving_Typerepr.the_field"
+    | _ -> failwith "Deriving_Typerepr.the_field"
+
+let the_unary_case t name t1 =
+  match t with
+   | Sum { summands } ->
+     (match List.assoc name summands with
+       | Any_summand (Summand_unary (ix, t2)) when eq t1 t2 ->
+         fun p -> Case_unary ((ix, t1), p)
+       | _ -> failwith "Deriving_Typerepr.the_unary_case")
+   | _ -> failwith "Deriving_Typerepr.the_unary_case"
+
+let the_nary_case t name t1 =
+  match t, t1 with
+   | Sum { summands }, Tuple t1_tuple ->
+     (match List.assoc name summands with
+       | Any_summand (Summand_nary (ix, t2)) when eq t1 (Tuple t2) ->
+         fun p -> Case_nary ((ix, t1_tuple), p)
+       | _ -> failwith "Deriving_Typerepr.the_unary_case")
+   | _ -> failwith "Deriving_Typerepr.the_unary_case"
+
+let the_component t ix t1 =
+  match t with
+    | Tuple { components } ->
+      (match List.nth components ix with
+        | Any_component (Component (t2, ix)) when eq t1 t2 ->
+          fun p -> Tuple_component (Component (t1, ix), p)
+        | _ -> failwith "Deriving_Typerepr.the_component")
+   | _ -> failwith "Deriving_Typerepr.the_component"
+
 module type Typerepr =
 sig
   type a
