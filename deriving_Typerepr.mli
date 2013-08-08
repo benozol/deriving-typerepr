@@ -78,29 +78,28 @@ val get_sum_case_by_summand : ('a, 'b) summand ->'a -> 'b option
 
 (** {2 Paths to components} *)
 
-(** A value of type [('w, 'a, 'b, 'c) p] encodes the path from
-    a value of type ['a] to one of type ['c], where ['a] is directly
-    embedded in one of ['w] and ['c] in ['b]. *)
-type ('w, 'a, 'b, 'c) p =
-  | Root : ('w, 'a, 'w, 'a) p
-  | Tuple_component : ('b, 'c) component * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
-  | List_item : int * ('w, 'a, _, 'c list) p -> ('w, 'a, 'c list, 'c) p
-  | Array_item : int * ('w, 'a, _, 'c array) p -> ('w, 'a, 'c array, 'c) p
-  | Case_unary : ('b, 'c) unary_summand * ('w, 'a, _, 'b) p  -> ('w, 'a, 'b, 'c) p
-  | Case_nary : ('d, 'c) component * ('b, 'd) nary_summand * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
-  | Record_field : ('b, 'c) field * ('w, 'a, _, 'b) p -> ('w, 'a, 'b, 'c) p
-  | Option_some : ('w, 'a, _, 'c option) p -> ('w, 'a, 'c option, 'c) p
-  | Ref_content : ('w, 'a, _, 'c ref) p -> ('w, 'a, 'c ref, 'c) p
+(** A value of type [('a, 'b,) p] encodes the path from a value of
+    type ['a] to a component of type ['b]. *)
+type ('a, 'b) p =
+  | Root : ('a, 'a) p
+  | Tuple_component : ('b, 'c) component * ('a, 'b) p -> ('a, 'c) p
+  | List_item : int * ('a, 'b list) p -> ('a, 'b) p
+  | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
+  | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
+  | Case_nary : ('c, 'd) component * ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'd) p
+  | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
+  | Option_some : ('a, 'b option) p -> ('a, 'b) p
+  | Ref_content : ('a, 'b ref) p -> ('a, 'b) p
 
-val get : 'a -> (_, 'a, _, 'c) p -> 'c option
+val get : 'a -> ('a, 'c) p -> 'c option
 
-val compose : ('w1, 'a1, 'b2, 'a2) p -> ('b2, 'a2, 'b3, 'a3) p -> ('w1, 'a1, 'b3, 'a3) p
+val compose : ('b, 'c) p -> ('a, 'b) p -> ('a, 'c) p
 
-type ('w, 'a, 'acc) folder = {
-  folder : 'c 'b . 'acc -> 'c -> 'c t -> ('w, 'a, 'b, 'c) p  -> 'acc
+type ('a, 'acc) folder = {
+  folder : 'b . 'acc -> 'b -> 'b t -> ('a, 'b) p  -> 'acc
 }
 
-val fold : ('w, 'a, 'acc) folder -> 'acc -> 'a -> 'a t -> 'acc
+val fold : ('a, 'acc) folder -> 'acc -> 'a -> 'a t -> 'acc
 
 (** {2 Predefined type representations} *)
 
