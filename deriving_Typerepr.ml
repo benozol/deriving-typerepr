@@ -98,8 +98,8 @@ let get_tuple_component : type a b . (a, b) component -> a -> b =
 type 'a create_tuple_component = {
   create_tuple_component : 'b . ('a, 'b) component -> 'b;
 }
-let create_tuple : type a . a any_component list -> a create_tuple_component -> a =
-  fun components f ->
+let create_tuple : type a . a tuple -> a create_tuple_component -> a =
+  fun { components } f ->
     let o = Obj.new_block 0 (List.length components) in
     begin
       flip List.iteri components @ fun ix (Any_component component) ->
@@ -358,19 +358,18 @@ let fold f init value t =
   in
   aux init t value Root
 
+let eq_atomic : type a b . a atomic -> b atomic -> bool =
+  fun a1 a2 ->
+    match a1, a2 with
+      | Unit, Unit -> true
+      | Int, Int -> true
+      | Bool, Bool -> true
+      | String, String -> true
+      | Float, Float -> true
+      | Int32, Int32 -> true
+      | Int64, Int64 -> true
+      | _ -> false
 let rec eq : type a b . a t -> b t -> bool =
-  let eq_atomic : type a b . a atomic -> b atomic -> bool =
-    fun a1 a2 ->
-      match a1, a2 with
-        | Unit, Unit -> true
-        | Int, Int -> true
-        | Bool, Bool -> true
-        | String, String -> true
-        | Float, Float -> true
-        | Int32, Int32 -> true
-        | Int64, Int64 -> true
-        | _ -> false
-  in
   let eq_tuple : type a b . a tuple -> b tuple -> bool =
     fun { components = cs1 } { components = cs2 } ->
       let tester (Any_component (Component (t1, _))) (Any_component (Component (t2, _))) =
@@ -412,51 +411,60 @@ let rec eq : type a b . a t -> b t -> bool =
       | Record r1, Record r2 -> eq_record r1 r2
       | _ -> false
 
-let the_field t name t1 =
-  match t with
-    | Record { fields } ->
-      let Any_field (Field (ix, t2)) = List.assoc name fields in
-      if eq t1 t2 then
-        fun p -> Record_field (Field (ix, t1), p)
-      else
-        failwith "Deriving_Typerepr.the_field"
-    | _ -> failwith "Deriving_Typerepr.the_field"
+module Path = struct
 
-let the_nullary_case t name =
-  match t with
-   | Sum { summands } ->
-     (match List.assoc name summands with
-       | Any_summand (Summand_nullary ix) ->
-         fun p -> Case_nullary (ix, p)
-       | _ -> failwith "Deriving_Typerepr.the_unary_case")
-   | _ -> failwith "Deriving_Typerepr.the_unary_case"
+  let root = Root
+  let list_item ix = List_item (ix, Root)
+  let array_item ix = Array_item (ix, Root)
+  let some = Option_some Root
+  let content = Ref_content Root
 
-let the_unary_case t name t1 =
-  match t with
-   | Sum { summands } ->
-     (match List.assoc name summands with
-       | Any_summand (Summand_unary (ix, t2)) when eq t1 t2 ->
-         fun p -> Case_unary ((ix, t1), p)
-       | _ -> failwith "Deriving_Typerepr.the_unary_case")
-   | _ -> failwith "Deriving_Typerepr.the_unary_case"
+  let field t name t1 =
+    match t with
+      | Record { fields } ->
+        let Any_field (Field (ix, t2)) = List.assoc name fields in
+        if eq t1 t2 then
+          Record_field (Field (ix, t1), Root)
+        else
+          failwith "Deriving_Typerepr.Path.field"
+      | _ -> failwith "Deriving_Typerepr.Path.field"
 
-let the_nary_case t name t1 =
-  match t, t1 with
-   | Sum { summands }, Tuple t1_tuple ->
-     (match List.assoc name summands with
-       | Any_summand (Summand_nary (ix, t2)) when eq t1 (Tuple t2) ->
-         fun p -> Case_nary ((ix, t1_tuple), p)
-       | _ -> failwith "Deriving_Typerepr.the_unary_case")
-   | _ -> failwith "Deriving_Typerepr.the_unary_case"
+  let case_nullary t name =
+    match t with
+     | Sum { summands } ->
+       (match List.assoc name summands with
+         | Any_summand (Summand_nullary ix) ->
+           Case_nullary (ix, Root)
+         | _ -> failwith "Deriving_Typerepr.Path.unary_case")
+     | _ -> failwith "Deriving_Typerepr.Path.unary_case"
 
-let the_component t ix t1 =
-  match t with
-    | Tuple { components } ->
-      (match List.nth components ix with
-        | Any_component (Component (t2, ix)) when eq t1 t2 ->
-          fun p -> Tuple_component (Component (t1, ix), p)
-        | _ -> failwith "Deriving_Typerepr.the_component")
-   | _ -> failwith "Deriving_Typerepr.the_component"
+  let case_unary t name t1 =
+    match t with
+     | Sum { summands } ->
+       (match List.assoc name summands with
+         | Any_summand (Summand_unary (ix, t2)) when eq t1 t2 ->
+           Case_unary ((ix, t1), Root)
+         | _ -> failwith "Deriving_Typerepr.Path.unary_case")
+     | _ -> failwith "Deriving_Typerepr.Path.unary_case"
+
+  let case_nary t name t1 =
+    match t, t1 with
+     | Sum { summands }, Tuple t1_tuple ->
+       (match List.assoc name summands with
+         | Any_summand (Summand_nary (ix, t2)) when eq t1 (Tuple t2) ->
+           Case_nary ((ix, t1_tuple), Root)
+         | _ -> failwith "Deriving_Typerepr.Path.unary_case")
+     | _ -> failwith "Deriving_Typerepr.Path.unary_case"
+
+  let component t ix t1 =
+    match t with
+      | Tuple { components } ->
+        (match List.nth components ix with
+          | Any_component (Component (t2, ix)) when eq t1 t2 ->
+            Tuple_component (Component (t1, ix), Root)
+          | _ -> failwith "Deriving_Typerepr.Path.component")
+     | _ -> failwith "Deriving_Typerepr.Path.component"
+end
 
 module type Typerepr =
 sig

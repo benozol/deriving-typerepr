@@ -25,7 +25,8 @@ and ('a, 'b) component = private
   | Component : 'b t * int -> ('a, 'b) component
 and 'a any_component =
   | Any_component : ('a, 'b) component -> 'a any_component
-and 'a tuple = { components : 'a any_component list }
+and 'a tuple = private
+  { components : 'a any_component list }
 
 and ('a, 'b) summand = private
   | Summand_nullary : 'a nullary_summand -> ('a, unit) summand
@@ -62,7 +63,7 @@ val create_record : 'a record -> 'a create_record_field -> 'a
 type 'a create_tuple_component = {
   create_tuple_component : 'b. ('a, 'b) component -> 'b;
 }
-val create_tuple : 'a any_component list -> 'a create_tuple_component -> 'a
+val create_tuple : 'a tuple -> 'a create_tuple_component -> 'a
 val create_sum_case : ('a, 'b) summand -> 'b -> 'a
 
 (** {2 Inspection} *)
@@ -104,14 +105,26 @@ val fold : ('a, 'acc) folder -> 'acc -> 'a -> 'a t -> 'acc
 
 val show : 'a t -> 'a -> string
 
-(** {3 Path construction}
-    The following functions raise [Not_found] if the component doesn't
-    exist and [Failure _] when the type doesn't match. *)
-val the_field : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
-val the_nullary_case : 'b t -> string -> ('a, 'b) p -> ('a, unit) p
-val the_unary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
-val the_nary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
-val the_component : 'b t -> int -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+module Path : sig
+
+  (** Helpers for path construction
+      Useful with the [compose] above. *)
+
+  val root : ('a, 'a) p
+  val list_item : int -> ('a list, 'a) p
+  val array_item : int -> ('a array, 'a) p
+  val some : ('a option, 'a) p
+  val content : ('a ref, 'a) p
+
+  (** The following functions raise [Not_found] if the component
+      doesn't exist and [Failure _] when the type doesn't match. *)
+
+  val field : 'a t -> string -> 'b t -> ('a, 'b) p
+  val case_nullary : 'a t -> string -> ('a, unit) p
+  val case_unary : 'a t -> string -> 'b t -> ('a, 'b) p
+  val case_nary : 'a t -> string -> 'b t -> ('a, 'b) p
+  val component : 'a t -> int -> 'b t -> ('a, 'b) p
+end
 
 (** {2 Predefined type representations} *)
 
@@ -130,6 +143,9 @@ module Typerepr_array : functor (T : Typerepr) -> Typerepr with type a = T.a arr
 module Typerepr_ref : functor (T : Typerepr) -> Typerepr with type a = T.a ref
 
 (**/**)
+
+val eq : 'a t -> 'b t -> bool
+val eq_atomic : 'a atomic -> 'b atomic -> bool
 
 (** Untyped constructors *)
 
