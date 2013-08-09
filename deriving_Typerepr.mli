@@ -20,6 +20,7 @@ type 'a t = private
   | Ref : 'a t -> 'a ref t
   | Sum : 'a sum -> 'a t
   | Record : 'a record -> 'a t
+  | Variant : 'a variant -> 'a t
 
 and ('a, 'b) component = private
   | Component : 'b t * int -> ('a, 'b) component
@@ -28,24 +29,34 @@ and 'a any_component =
 and 'a tuple = private
   { components : 'a any_component list }
 
-and ('a, 'b) summand = private
-  | Summand_nullary : 'a nullary_summand -> ('a, unit) summand
-  | Summand_unary : ('a, 'b) unary_summand -> ('a, 'b) summand
-  | Summand_nary : ('a, 'b) nary_summand -> ('a, 'b) summand
-and 'a nullary_summand = private int
-and ('a, 'b) unary_summand = private int * 'b t
-and ('a, 'b) nary_summand = private int * 'b tuple
-and 'a any_summand =
-  | Any_summand : ('a, 'b) summand -> 'a any_summand
-and 'a sum = private
-    { summands : (string * 'a any_summand) list; }
-
 and ('a, 'b) field = private
   | Field : int * 'b t -> ('a, 'b) field
 and 'a any_field =
   | Any_field : ('a, 'b) field -> 'a any_field
 and 'a record = private
     { fields : (string * 'a any_field) list; }
+
+and ('a, 'b) summand = private
+  | Summand_nullary : 'a nullary -> ('a, unit) summand
+  | Summand_unary : ('a, 'b) unary -> ('a, 'b) summand
+  | Summand_nary : ('a, 'b) nary -> ('a, 'b) summand
+and 'a any_summand =
+  | Any_summand : ('a, 'b) summand -> 'a any_summand
+and 'a sum = private
+    { summands : (string * 'a any_summand) list; }
+
+and ('a, 'b) tagspec =
+  | Tag_nullary : 'a nullary -> ('a, unit) tagspec
+  | Tag_unary : ('a, 'b) unary -> ('a, 'b) tagspec
+  | Tag_nary : ('a, 'b) nary -> ('a, 'b) tagspec
+and 'a any_tagspec =
+  | Any_tagspec : ('a, 'b) tagspec -> 'a any_tagspec
+and 'a variant = private
+    { tagspecs : (string * 'a any_tagspec) list }
+
+and 'a nullary = private int
+and ('a, 'b) unary = private int * 'b t
+and ('a, 'b) nary = private int * 'b tuple
 
 type any_t = Any_t : 'a t -> any_t
 
@@ -84,9 +95,9 @@ type ('a, 'b) p =
   | Tuple_component : ('b, 'c) component * ('a, 'b) p -> ('a, 'c) p
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
-  | Case_nullary : 'b nullary_summand * ('a, 'b) p  -> ('a, unit) p
-  | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
-  | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
+  | Case_nullary : 'b nullary * ('a, 'b) p  -> ('a, unit) p
+  | Case_unary : ('b, 'c) unary * ('a, 'b) p  -> ('a, 'c) p
+  | Case_nary : ('b, 'c) nary * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
   | Option_some : ('a, 'b option) p -> ('a, 'b) p
   | Ref_content : ('a, 'b ref) p -> ('a, 'b) p
@@ -157,3 +168,7 @@ val __summand_nary__ : int -> 'b any_component list -> ('a, 'b) summand
 val __component__ : int -> 'b t -> ('a, 'b) component
 val __tuple__ : 'a any_component list -> 'a t
 val __sum__ : (string * 'a any_summand) list -> 'a t
+val __tag_nullary__ : int -> ('a, unit) tagspec
+val __tag_unary__ : int -> 'b t -> ('a, 'b) tagspec
+val __tag_nary__ : int -> 'b any_component list -> ('a, 'b) tagspec
+val __variant__ : (string * 'a any_tagspec) list -> 'a t

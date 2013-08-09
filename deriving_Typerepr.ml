@@ -39,24 +39,35 @@ type 'a t =
   | Ref : 'a t -> 'a ref t
   | Sum : 'a sum -> 'a t
   | Record : 'a record -> 'a t
+  | Variant : 'a variant -> 'a t
 
 and ('a, 'b) field = Field : int * 'b t -> ('a, 'b) field
 and 'a any_field = Any_field : ('a, _) field -> 'a any_field
 and 'a record = { fields : (string * 'a any_field) list }
 
 and ('a, 'b) summand =
-  | Summand_nullary : 'a nullary_summand -> ('a, unit) summand
-  | Summand_unary : ('a, 'b) unary_summand -> ('a, 'b) summand
-  | Summand_nary : ('a, 'b) nary_summand -> ('a, 'b) summand
-and 'a nullary_summand = int
-and ('a, 'b) unary_summand = int * 'b t
-and ('a, 'b) nary_summand = int * 'b tuple
+  | Summand_nullary : 'a nullary -> ('a, unit) summand
+  | Summand_unary : ('a, 'b) unary -> ('a, 'b) summand
+  | Summand_nary : ('a, 'b) nary -> ('a, 'b) summand
 and 'a any_summand = Any_summand : ('a, _) summand -> 'a any_summand
 and 'a sum = { summands : (string * 'a any_summand) list }
 
 and ('a, 'b) component = Component : 'b t * int -> ('a, 'b) component
 and 'a any_component = Any_component : ('a, _) component -> 'a any_component
 and 'a tuple = { components : 'a any_component list }
+
+and ('a, 'b) tagspec =
+  | Tag_nullary : 'a nullary -> ('a, unit) tagspec
+  | Tag_unary : ('a, 'b) unary -> ('a, 'b) tagspec
+  | Tag_nary : ('a, 'b) nary -> ('a, 'b) tagspec
+and 'a any_tagspec =
+  | Any_tagspec : ('a, 'b) tagspec -> 'a any_tagspec
+and 'a variant =
+    { tagspecs : (string * 'a any_tagspec) list }
+
+and 'a nullary = int
+and ('a, 'b) unary = int * 'b t
+and ('a, 'b) nary = int * 'b tuple
 
 type dyn = Dyn : 'a t * 'a -> dyn
 type dyn_tuple = Dyn_tuple : 'a tuple * 'a -> dyn_tuple
@@ -194,21 +205,24 @@ let rec show : type a . a t -> a -> string =
         "{"^String.concat "; " ss^"}"
       | Sum sum ->
         let name, any_case_value = get_sum_case sum value in
-        match any_case_value with
-          | Any_case_value (Summand_nullary _, ()) -> name
-          | Any_case_value (Summand_unary (_, t), value) -> name^" "^show t value
-          | Any_case_value (Summand_nary (_, tuple), value) ->
-            name^" "^show (Tuple tuple) value
-
+        begin
+          match any_case_value with
+            | Any_case_value (Summand_nullary _, ()) -> name
+            | Any_case_value (Summand_unary (_, t), value) -> name^" "^show t value
+            | Any_case_value (Summand_nary (_, tuple), value) ->
+              name^" "^show (Tuple tuple) value
+        end
+      | Variant _ ->
+        failwith "Deriving_Typerepr.show: variant"
 
 type ('a, 'b) p =
   | Root : ('a, 'a) p
   | Tuple_component : ('b, 'c) component * ('a, 'b) p -> ('a, 'c) p
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
-  | Case_nullary : 'b nullary_summand * ('a, 'b) p -> ('a, unit) p
-  | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
-  | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
+  | Case_nullary : 'b nullary * ('a, 'b) p -> ('a, unit) p
+  | Case_unary : ('b, 'c) unary * ('a, 'b) p  -> ('a, 'c) p
+  | Case_nary : ('b, 'c) nary * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
   | Option_some : ('a, 'b option) p -> ('a, 'b) p
   | Ref_content : ('a, 'b ref) p -> ('a, 'b) p
@@ -332,12 +346,10 @@ let fold f init value t =
               match summand with
                 | Summand_nullary ix ->
                   sofar
-                | Summand_unary unary_summand ->
-                  let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+                | Summand_unary ((_, t) as unary_summand) ->
                   aux sofar t value @
                     Case_unary (unary_summand, path)
-                | Summand_nary nary_summand ->
-                  let _, { components } = (nary_summand : (_,_) nary_summand :> _ * _) in
+                | Summand_nary ((_, { components }) as nary_summand) ->
                   let path = Case_nary (nary_summand, path) in
                   let folder sofar (Any_component (Component (t, ix) as component)) =
                     let value = get_tuple_component component value in
@@ -353,6 +365,7 @@ let fold f init value t =
             in
             List.fold_left folder sofar fields
           | Function _ -> failwith "Deriving_Typerepr.fold"
+          | Variant _ -> failwith "Deriving_Typerepr.fold: variant"
     in
     f.folder sofar value t path
   in
@@ -504,3 +517,7 @@ let __sum__ summands = Sum { summands }
 let __component__ ix t = Component (t, ix)
 let __tuple__ components = Tuple { components }
 let __atomic__ atomic = Atomic atomic
+let __tag_nullary__ ix = Tag_nullary ix
+let __tag_unary__ ix t = Tag_unary (ix, t)
+let __tag_nary__ ix components = Tag_nary (ix, { components })
+let __variant__ tagspecs = Variant { tagspecs }
