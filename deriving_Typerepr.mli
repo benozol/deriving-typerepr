@@ -28,9 +28,10 @@ and 'a any_component =
 and 'a tuple = { components : 'a any_component list }
 
 and ('a, 'b) summand = private
-  | Summand_nullary : int -> ('a, unit) summand
+  | Summand_nullary : 'a nullary_summand -> ('a, unit) summand
   | Summand_unary : ('a, 'b) unary_summand -> ('a, 'b) summand
   | Summand_nary : ('a, 'b) nary_summand -> ('a, 'b) summand
+and 'a nullary_summand = private int
 and ('a, 'b) unary_summand = private int * 'b t
 and ('a, 'b) nary_summand = private int * 'b tuple
 and 'a any_summand =
@@ -85,6 +86,7 @@ type ('a, 'b) p =
   | Tuple_component : ('b, 'c) component * ('a, 'b) p -> ('a, 'c) p
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
+  | Case_nullary : 'b nullary_summand * ('a, 'b) p  -> ('a, unit) p
   | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
   | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
@@ -109,6 +111,7 @@ val show : 'a t -> 'a -> string
     The following functions raise [Not_found] if the component doesn't
     exist and [Failure _] when the type doesn't match. *)
 val the_field : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
+val the_nullary_case : 'b t -> string -> ('a, 'b) p -> ('a, unit) p
 val the_unary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
 val the_nary_case : 'b t -> string -> 'c t -> ('a, 'b) p -> ('a, 'c) p
 val the_component : 'b t -> int -> 'c t -> ('a, 'b) p -> ('a, 'c) p

@@ -45,9 +45,10 @@ and 'a any_field = Any_field : ('a, _) field -> 'a any_field
 and 'a record = { fields : (string * 'a any_field) list }
 
 and ('a, 'b) summand =
-  | Summand_nullary : int -> ('a, unit) summand
+  | Summand_nullary : 'a nullary_summand -> ('a, unit) summand
   | Summand_unary : ('a, 'b) unary_summand -> ('a, 'b) summand
   | Summand_nary : ('a, 'b) nary_summand -> ('a, 'b) summand
+and 'a nullary_summand = int
 and ('a, 'b) unary_summand = int * 'b t
 and ('a, 'b) nary_summand = int * 'b tuple
 and 'a any_summand = Any_summand : ('a, _) summand -> 'a any_summand
@@ -212,6 +213,7 @@ type ('a, 'b) p =
   | Tuple_component : ('b, 'c) component * ('a, 'b) p -> ('a, 'c) p
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
+  | Case_nullary : 'b nullary_summand * ('a, 'b) p -> ('a, unit) p
   | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
   | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
@@ -233,6 +235,9 @@ let rec get : type a b . a -> (a, b) p -> b option =
         Option.map
           (flip Array.get ix)
           (get value path)
+      | Case_nullary (nullary_summand, path) ->
+        Option.map (fun _ -> ()) @
+          get value path
       | Case_unary (unary_summand, path) ->
         Option.bind
           (get_sum_case_by_summand (Summand_unary unary_summand))
@@ -420,6 +425,15 @@ let the_field t name t1 =
       else
         failwith "Deriving_Typerepr.the_field"
     | _ -> failwith "Deriving_Typerepr.the_field"
+
+let the_nullary_case t name =
+  match t with
+   | Sum { summands } ->
+     (match List.assoc name summands with
+       | Any_summand (Summand_nullary ix) ->
+         fun p -> Case_nullary (ix, p)
+       | _ -> failwith "Deriving_Typerepr.the_unary_case")
+   | _ -> failwith "Deriving_Typerepr.the_unary_case"
 
 let the_unary_case t name t1 =
   match t with
