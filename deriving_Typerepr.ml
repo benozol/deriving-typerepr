@@ -95,13 +95,6 @@ let get_tuple_component : type a b . (a, b) component -> a -> b =
       | Component (t, ix) ->
           Obj.obj @ Obj.field (Obj.repr value) ix
 
-let get_tuple_components : 'a . 'a any_component list -> 'a -> dyn list =
-  fun (type a) (components : a any_component list) value ->
-    flip List.map components @
-      fun (type b) (Any_component component) ->
-        let Component (t, _) = component in
-        Dyn (t, get_tuple_component component value)
-
 type 'a create_tuple_component = {
   create_tuple_component : 'b . ('a, 'b) component -> 'b;
 }
@@ -170,8 +163,8 @@ let rec show : type a . a t -> a -> string =
       | Atomic String -> "\""^String.escaped value^"\""
       | Tuple { components } ->
         let ss =
-          flip List.map (get_tuple_components components value) @ fun dyn ->
-            let Dyn (t, value) = dyn in
+          flip List.map components @ fun (Any_component (Component (t, _) as component)) ->
+            let value = get_tuple_component component value in
             show t value
         in
         "("^String.concat ", " ss^")"
@@ -263,29 +256,32 @@ let rec compose : type a b c . (b, c) p -> (a, b) p -> (a, c) p =
   fun path1 path2 ->
     match path1 with
       | Tuple_component (component, path1) ->
-        let pos3 = compose path1 path2 in
-        Tuple_component (component, pos3)
+        let path3 = compose path1 path2 in
+        Tuple_component (component, path3)
       | List_item (ix, path1) ->
-        let pos3 = compose path1 path2 in
-        List_item (ix, pos3)
+        let path3 = compose path1 path2 in
+        List_item (ix, path3)
       | Option_some path1 ->
-        let pos3 = compose path1 path2 in
-        Option_some pos3
+        let path3 = compose path1 path2 in
+        Option_some path3
       | Array_item (ix, path1) ->
-        let pos3 = compose path1 path2 in
-        Array_item (ix, pos3)
+        let path3 = compose path1 path2 in
+        Array_item (ix, path3)
+      | Case_nullary (summand, path1) ->
+        let path3 = compose path1 path2 in
+        Case_nullary (summand, path3)
       | Case_unary (summand, path1) ->
-        let pos3 = compose path1 path2 in
-        Case_unary (summand, pos3)
+        let path3 = compose path1 path2 in
+        Case_unary (summand, path3)
       | Case_nary (summand, path1) ->
-        let pos3 = compose path1 path2 in
-        Case_nary (summand, pos3)
+        let path3 = compose path1 path2 in
+        Case_nary (summand, path3)
       | Record_field (field, path1) ->
-        let pos3 = compose path1 path2 in
-        Record_field (field, pos3)
+        let path3 = compose path1 path2 in
+        Record_field (field, path3)
       | Ref_content path1 ->
-        let pos3 = compose path1 path2 in
-        Ref_content pos3
+        let path3 = compose path1 path2 in
+        Ref_content path3
       | Root -> path2
 
 type ('a, 'acc) folder = {

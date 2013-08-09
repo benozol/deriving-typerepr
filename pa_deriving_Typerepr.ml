@@ -16,18 +16,18 @@ module Description : Defs.ClassDescription = struct
   let alpha = None
   let allow_private = true
   let predefs = [
-    ["int" ], ["Deriving_Typerepr";"int"];
-    ["bool" ], ["Deriving_Typerepr";"bool"];
-    ["unit" ], ["Deriving_Typerepr";"unit"];
-    ["char" ], ["Deriving_Typerepr";"char"];
-    ["int32" ], ["Deriving_Typerepr";"int32"];
-    ["int64" ], ["Deriving_Typerepr";"int64"];
-    ["float" ], ["Deriving_Typerepr";"float"];
-    ["string" ], ["Deriving_Typerepr";"string"];
-    ["list" ], ["Deriving_Typerepr";"list"];
-    ["ref" ], ["Deriving_Typerepr";"ref"];
-    ["option" ], ["Deriving_Typerepr";"option"];
-    ["array" ], ["Deriving_Typerepr";"array"];
+    ["int"], ["Deriving_Typerepr";"int"];
+    ["bool"], ["Deriving_Typerepr";"bool"];
+    ["unit"], ["Deriving_Typerepr";"unit"];
+    ["char"], ["Deriving_Typerepr";"char"];
+    ["int32"], ["Deriving_Typerepr";"int32"];
+    ["int64"], ["Deriving_Typerepr";"int64"];
+    ["float"], ["Deriving_Typerepr";"float"];
+    ["string"], ["Deriving_Typerepr";"string"];
+    ["list"], ["Deriving_Typerepr";"list"];
+    ["ref"], ["Deriving_Typerepr";"ref"];
+    ["option"], ["Deriving_Typerepr";"option"];
+    ["array"], ["Deriving_Typerepr";"array"];
   ]
   let depends = []
 end

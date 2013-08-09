@@ -50,10 +50,8 @@ type any_t = Any_t : 'a t -> any_t
 
 (** {2 Dynamically values} *)
 
-type dyn = private
+type dyn =
   | Dyn : 'a t * 'a -> dyn
-type dyn_tuple = private
-  | Dyn_tuple : 'a tuple * 'a -> dyn_tuple
 
 (** {2 Creation} *)
 
@@ -71,7 +69,6 @@ val create_sum_case : ('a, 'b) summand -> 'b -> 'a
 
 val get_record_field : ('a, 'b) field -> 'a -> 'b
 val get_tuple_component : ('a, 'b) component -> 'a -> 'b
-val get_tuple_components : 'a any_component list -> 'a -> dyn list
 type 'a any_case_value =
   | Any_case_value : ('a, 'b) summand * 'b -> 'a any_case_value
 val get_sum_case : 'a sum -> 'a -> string * 'a any_case_value
@@ -133,6 +130,8 @@ module Typerepr_array : functor (T : Typerepr) -> Typerepr with type a = T.a arr
 module Typerepr_ref : functor (T : Typerepr) -> Typerepr with type a = T.a ref
 
 (**/**)
+
+(** Untyped constructors *)
 
 val __field__ : int -> 'b t -> ('a, 'b) field
 val __record__ : (string * 'a any_field) list -> 'a t
