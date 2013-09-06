@@ -74,7 +74,7 @@ module Builder (Loc : Defs.Loc) = struct
       in
       let exp = <:expr< __record__ $Helpers.expr_list fields$ >> in
       [ <:str_item<
-          let rec t = let open Deriving_Typerepr in $exp$
+          let t = let open Deriving_Typerepr in $exp$
         >> ]
 
     method sum ?eq ctxt name args constraints summands =
@@ -105,10 +105,38 @@ module Builder (Loc : Defs.Loc) = struct
       in
       let exp = <:expr< __sum__ $Helpers.expr_list summands$ >> in
       [ <:str_item<
-          let rec t = let open Deriving_Typerepr in $exp$
+          let t = let open Deriving_Typerepr in $exp$
         >> ]
 
-    method variant = Base.fatal_error _loc "Variants not yet supported"
+    method variant ctxt name args cs (eq, tagsspecs) =
+      let tags =
+        flip List.map tagsspecs @ function
+          | Type.Tag (name, []) ->
+            let hash = Pa_deriving_common.Utils.tag_hash name in
+            <:expr<
+              $`str:name$, Any_tagspec (__tag_nullary__ $`int:hash$)
+            >>
+          | Type.Tag (name, [exp]) ->
+            let hash = Pa_deriving_common.Utils.tag_hash name in
+            <:expr<
+              $`str:name$, Any_tagspec (__tag_unary__ $`int:hash$ $self#call_expr ctxt exp "t"$)
+            >>
+          | Type.Tag (name, exps) -> (* How to create such a tag? *)
+            let hash = Pa_deriving_common.Utils.tag_hash name in
+            let exps =
+              flip List.mapi exps @ fun ix exp ->
+                <:expr< Any_component (__component__ $`int:ix$ $self#call_expr ctxt exp "t"$) >>
+            in
+            <:expr<
+              $`str:name$, Any_tagspec (__tag_nary__ $`int:hash$ $Helpers.expr_list exps$)
+            >>
+          | Type.Extends t -> Base.fatal_error _loc "Extending tags not yet supported"
+      in
+      let exp = <:expr< __variant__ $Helpers.expr_list tags$ >> in
+      [ <:str_item<
+          let t = let open Deriving_Typerepr in $exp$
+        >> ]
+
     (* method class_ = Base.fatal_error _loc "Classes not yet supported" *)
     (* method object_ = Base.fatal_error _loc "Objects not yet supported" *)
     (* method label = Base.fatal_error _loc "Objects not yet supported" *)

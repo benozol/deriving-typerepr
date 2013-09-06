@@ -39,24 +39,35 @@ type 'a t =
   | Ref : 'a t -> 'a ref t
   | Sum : 'a sum -> 'a t
   | Record : 'a record -> 'a t
+  | Variant : 'a variant -> 'a t
 
 and ('a, 'b) field = Field : int * 'b t -> ('a, 'b) field
 and 'a any_field = Any_field : ('a, _) field -> 'a any_field
 and 'a record = { fields : (string * 'a any_field) list }
 
 and ('a, 'b) summand =
-  | Summand_nullary : 'a nullary_summand -> ('a, unit) summand
-  | Summand_unary : ('a, 'b) unary_summand -> ('a, 'b) summand
-  | Summand_nary : ('a, 'b) nary_summand -> ('a, 'b) summand
-and 'a nullary_summand = int
-and ('a, 'b) unary_summand = int * 'b t
-and ('a, 'b) nary_summand = int * 'b tuple
+  | Summand_nullary : 'a nullary -> ('a, unit) summand
+  | Summand_unary : ('a, 'b) unary -> ('a, 'b) summand
+  | Summand_nary : ('a, 'b) nary -> ('a, 'b) summand
 and 'a any_summand = Any_summand : ('a, _) summand -> 'a any_summand
 and 'a sum = { summands : (string * 'a any_summand) list }
 
 and ('a, 'b) component = Component : 'b t * int -> ('a, 'b) component
 and 'a any_component = Any_component : ('a, _) component -> 'a any_component
 and 'a tuple = { components : 'a any_component list }
+
+and ('a, 'b) tagspec =
+  | Tag_nullary : 'a nullary -> ('a, unit) tagspec
+  | Tag_unary : ('a, 'b) unary -> ('a, 'b) tagspec
+  | Tag_nary : ('a, 'b) nary -> ('a, 'b) tagspec
+and 'a any_tagspec =
+  | Any_tagspec : ('a, 'b) tagspec -> 'a any_tagspec
+and 'a variant =
+    { tagspecs : (string * 'a any_tagspec) list }
+
+and 'a nullary = int
+and ('a, 'b) unary = int * 'b t
+and ('a, 'b) nary = int * 'b tuple
 
 type dyn = Dyn : 'a t * 'a -> dyn
 type dyn_tuple = Dyn_tuple : 'a tuple * 'a -> dyn_tuple
@@ -132,9 +143,34 @@ let create_sum_case : type a b . (a, b) summand -> b -> a =
         let o = Obj.new_block ix 1 in
         Obj.set_field o 0 r;
         Obj.obj o
-      | Summand_nary (ix, { components}) ->
+      | Summand_nary (ix, { components }) ->
         let o = Obj.dup r in
         Obj.set_tag o ix;
+        Obj.obj o
+
+let get_variant_case_by_tagspec : type a b . (a, b) tagspec -> a -> b option =
+  fun tagspec v ->
+    let r = Obj.repr v in
+    match tagspec with
+      | Tag_nullary ix when Obj.is_int r && ix = Obj.obj r ->
+        Some ()
+      | Tag_unary (ix, _) when Obj.is_block r && ix = Obj.obj (Obj.field r 0) ->
+        Some (Obj.obj @ Obj.field r 1)
+      | Tag_nary (ix, _) when Obj.is_block r && ix = Obj.obj (Obj.field r 0) ->
+        Some (Obj.obj @ Obj.field r 1)
+      | _ -> None
+
+let create_variant_case : type a b . (a, b) tagspec -> b -> a =
+  fun tagspec arg ->
+    let r = Obj.repr arg in
+    match tagspec with
+      | Tag_nullary ix ->
+        Obj.magic ix
+      | Tag_unary (ix, _)
+      | Tag_nary (ix, _) ->
+        let o = Obj.new_block 0 2 in
+        Obj.set_field o 0 (Obj.repr ix);
+        Obj.set_field o 1 r;
         Obj.obj o
 
 type 'a any_case_value =
@@ -150,6 +186,20 @@ let get_sum_case : type a b . a sum -> a -> string * a any_case_value =
           | Some value -> name, Any_case_value (summand, value)
     in
     aux summands
+
+type 'a any_tagspec_value =
+  | Any_variant_value : ('a, 'b) tagspec * 'b -> 'a any_tagspec_value
+
+let get_variant_case : type a b . a variant -> a -> string * a any_tagspec_value =
+  fun { tagspecs } value ->
+    let rec aux = function
+      | [] -> assert false
+      | (name, Any_tagspec tagspec) :: tags ->
+        match get_variant_case_by_tagspec tagspec value with
+          | None -> aux tags
+          | Some value -> name, Any_variant_value (tagspec, value)
+    in
+    aux tagspecs
 
 let rec show : type a . a t -> a -> string =
   fun t value ->
@@ -194,24 +244,37 @@ let rec show : type a . a t -> a -> string =
         "{"^String.concat "; " ss^"}"
       | Sum sum ->
         let name, any_case_value = get_sum_case sum value in
-        match any_case_value with
-          | Any_case_value (Summand_nullary _, ()) -> name
-          | Any_case_value (Summand_unary (_, t), value) -> name^" "^show t value
-          | Any_case_value (Summand_nary (_, tuple), value) ->
-            name^" "^show (Tuple tuple) value
-
+        begin
+          match any_case_value with
+            | Any_case_value (Summand_nullary _, ()) -> name
+            | Any_case_value (Summand_unary (_, t), value) -> name^" "^show t value
+            | Any_case_value (Summand_nary (_, tuple), value) ->
+              name^" "^show (Tuple tuple) value
+        end
+      | Variant variant ->
+        let name, any_tagspec_value = get_variant_case variant value in
+        begin
+          match any_tagspec_value with
+            | Any_variant_value (Tag_nullary _, ()) -> name
+            | Any_variant_value (Tag_unary (_, t), value) -> name^" "^show t value
+            | Any_variant_value (Tag_nary (_, tuple), value) ->
+              name^" "^show (Tuple tuple) value
+        end
 
 type ('a, 'b) p =
   | Root : ('a, 'a) p
   | Tuple_component : ('b, 'c) component * ('a, 'b) p -> ('a, 'c) p
   | List_item : int * ('a, 'b list) p -> ('a, 'b) p
   | Array_item : int * ('a, 'b array) p -> ('a, 'b) p
-  | Case_nullary : 'b nullary_summand * ('a, 'b) p -> ('a, unit) p
-  | Case_unary : ('b, 'c) unary_summand * ('a, 'b) p  -> ('a, 'c) p
-  | Case_nary : ('b, 'c) nary_summand * ('a, 'b) p -> ('a, 'c) p
+  | Case_nullary : 'b nullary * ('a, 'b) p -> ('a, unit) p
+  | Case_unary : ('b, 'c) unary * ('a, 'b) p  -> ('a, 'c) p
+  | Case_nary : ('b, 'c) nary * ('a, 'b) p -> ('a, 'c) p
   | Record_field : ('b, 'c) field * ('a, 'b) p -> ('a, 'c) p
   | Option_some : ('a, 'b option) p -> ('a, 'b) p
   | Ref_content : ('a, 'b ref) p -> ('a, 'b) p
+  | Variant_case_nullary : 'b nullary * ('a, 'b) p -> ('a, unit) p
+  | Variant_case_unary : ('b, 'c) unary * ('a, 'b) p  -> ('a, 'c) p
+  | Variant_case_nary : ('b, 'c) nary * ('a, 'b) p -> ('a, 'c) p
 
 let rec get : type a b . a -> (a, b) p -> b option =
   fun value path ->
@@ -250,6 +313,17 @@ let rec get : type a b . a -> (a, b) p -> b option =
         Option.map
           (fun ref -> !ref)
           (get value path)
+      | Variant_case_nullary (nullary, path) ->
+        Option.map (fun _ -> ()) @
+          get value path
+      | Variant_case_unary (unary, path) ->
+        Option.bind
+          (get_variant_case_by_tagspec (Tag_unary unary))
+          (get value path)
+      | Variant_case_nary ((_, { components } as nary), path) ->
+        Option.bind
+          (get_variant_case_by_tagspec (Tag_nary nary))
+          (get value path)
       | Root -> Some value
 
 let rec compose : type a b c . (b, c) p -> (a, b) p -> (a, c) p =
@@ -282,6 +356,15 @@ let rec compose : type a b c . (b, c) p -> (a, b) p -> (a, c) p =
       | Ref_content path1 ->
         let path3 = compose path1 path2 in
         Ref_content path3
+      | Variant_case_nullary (summand, path1) ->
+        let path3 = compose path1 path2 in
+        Variant_case_nullary (summand, path3)
+      | Variant_case_unary (summand, path1) ->
+        let path3 = compose path1 path2 in
+        Variant_case_unary (summand, path3)
+      | Variant_case_nary (summand, path1) ->
+        let path3 = compose path1 path2 in
+        Variant_case_nary (summand, path3)
       | Root -> path2
 
 type ('a, 'acc) folder = {
@@ -332,12 +415,10 @@ let fold f init value t =
               match summand with
                 | Summand_nullary ix ->
                   sofar
-                | Summand_unary unary_summand ->
-                  let _, t = (unary_summand : (_, _) unary_summand :> _ * _) in
+                | Summand_unary ((_, t) as unary_summand) ->
                   aux sofar t value @
                     Case_unary (unary_summand, path)
-                | Summand_nary nary_summand ->
-                  let _, { components } = (nary_summand : (_,_) nary_summand :> _ * _) in
+                | Summand_nary ((_, { components }) as nary_summand) ->
                   let path = Case_nary (nary_summand, path) in
                   let folder sofar (Any_component (Component (t, ix) as component)) =
                     let value = get_tuple_component component value in
@@ -352,6 +433,22 @@ let fold f init value t =
                 Record_field (field, path)
             in
             List.fold_left folder sofar fields
+          | Variant variant ->
+            let name, Any_variant_value (tagspec, value) = get_variant_case variant value in begin
+              match tagspec with
+                | Tag_nullary ix ->
+                  sofar
+                | Tag_unary ((_, t) as unary) ->
+                  aux sofar t value @
+                    Variant_case_unary (unary, path)
+                | Tag_nary ((_, { components }) as nary) ->
+                  let path = Variant_case_nary (nary, path) in
+                  let folder sofar (Any_component (Component (t, ix) as component)) =
+                    let value = get_tuple_component component value in
+                    aux sofar t value @ Tuple_component (component, path)
+                  in
+                  List.fold_left folder sofar components
+            end
           | Function _ -> failwith "Deriving_Typerepr.fold"
     in
     f.folder sofar value t path
@@ -504,3 +601,7 @@ let __sum__ summands = Sum { summands }
 let __component__ ix t = Component (t, ix)
 let __tuple__ components = Tuple { components }
 let __atomic__ atomic = Atomic atomic
+let __tag_nullary__ ix = Tag_nullary ix
+let __tag_unary__ ix t = Tag_unary (ix, t)
+let __tag_nary__ ix components = Tag_nary (ix, { components })
+let __variant__ tagspecs = Variant { tagspecs }
