@@ -255,10 +255,10 @@ let rec show : type a . a t -> a -> string =
         let name, any_tagspec_value = get_variant_case variant value in
         begin
           match any_tagspec_value with
-            | Any_variant_value (Tag_nullary _, ()) -> name
-            | Any_variant_value (Tag_unary (_, t), value) -> name^" "^show t value
+            | Any_variant_value (Tag_nullary _, ()) -> "`"^name
+            | Any_variant_value (Tag_unary (_, t), value) -> "`"^name^" "^show t value
             | Any_variant_value (Tag_nary (_, tuple), value) ->
-              name^" "^show (Tuple tuple) value
+              "`"^name^" "^show (Tuple tuple) value
         end
 
 type ('a, 'b) p =
