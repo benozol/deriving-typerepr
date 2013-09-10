@@ -284,12 +284,12 @@ let rec get : type a b . a -> (a, b) p -> b option =
           (get_tuple_component component)
           (get value path)
       | List_item (ix, path) ->
-        Option.map
-          (flip List.nth ix)
+        Option.bind
+          (fun v -> try Some (List.nth v ix) with Failure "nth" -> None)
           (get value path)
       | Array_item (ix, path) ->
-        Option.map
-          (flip Array.get ix)
+        Option.bind
+          (fun v -> try Some (Array.get v ix) with Failure "nth" -> None)
           (get value path)
       | Case_nullary (nullary_summand, path) ->
         Option.map (fun _ -> ()) @
@@ -487,6 +487,18 @@ let rec eq : type a b . a t -> b t -> bool =
                 | Summand_nary (_, tu1), Summand_nary (_, tu2) -> eq_tuple tu1 tu2
                 | _  -> false
   in
+  let eq_variant : type a b . a variant -> b variant -> bool =
+    fun { tagspecs = ts1 } { tagspecs = ts2 } ->
+      List.length ts1 = List.length ts2 &&
+        flip2 List.for_all2 ts1 ts2 @
+          fun (n1, Any_tagspec t1) (n2, Any_tagspec t2) ->
+            n1 = n2 &&
+              match t1, t2 with
+                | Tag_nullary _, Tag_nullary _ -> true
+                | Tag_unary (_, t1), Tag_unary (_, t2) -> eq t1 t2
+                | Tag_nary (_, tu1), Tag_nary (_, tu2) -> eq_tuple tu1 tu2
+                | _  -> false
+  in
   let eq_record : type a b . a record -> b record -> bool =
     fun { fields = fs1 } { fields = fs2 } ->
       List.length fs1 = List.length fs2 &&
@@ -506,6 +518,7 @@ let rec eq : type a b . a t -> b t -> bool =
       | Tuple tu1, Tuple tu2 -> eq_tuple tu1 tu2
       | Sum s1, Sum s2 -> eq_sum s1 s2
       | Record r1, Record r2 -> eq_record r1 r2
+      | Variant v1, Variant v2 -> eq_variant v1 v2
       | _ -> false
 
 module Path = struct
@@ -556,11 +569,16 @@ module Path = struct
   let component t ix t1 =
     match t with
       | Tuple { components } ->
-        (match List.nth components ix with
-          | Any_component (Component (t2, ix)) when eq t1 t2 ->
-            Tuple_component (Component (t1, ix), Root)
-          | _ -> failwith "Deriving_Typerepr.Path.component")
-     | _ -> failwith "Deriving_Typerepr.Path.component"
+        begin
+          try
+            match List.nth components ix with
+              | Any_component (Component (t2, ix)) when eq t1 t2 ->
+                Tuple_component (Component (t1, ix), Root)
+              | _ -> failwith "Deriving_Typerepr.Path.component1"
+          with Failure "nth" ->
+            failwith "Deriving_Typerepr.Path.component2"
+        end
+     | _ -> failwith "Deriving_Typerepr.Path.component3"
 end
 
 module type Typerepr =
