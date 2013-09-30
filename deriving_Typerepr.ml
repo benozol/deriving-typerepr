@@ -30,6 +30,7 @@ type 'a atomic =
   | Int64 : int64 atomic
 
 type 'a t =
+  | Abstract : string -> 'a t
   | Atomic : 'a atomic -> 'a t
   | Tuple : 'a tuple -> 'a t
   | Function : string option * 'a t * 'b t -> ('a -> 'b) t
@@ -204,6 +205,7 @@ let get_variant_case : type a b . a variant -> a -> string * a any_tagspec_value
 let rec show : type a . a t -> a -> string =
   fun t value ->
     match t with
+      | Abstract name -> Printf.sprintf "<abstract %s>" name
       | Atomic Unit -> "()"
       | Atomic Bool -> if value then "true" else "false"
       | Atomic Int -> string_of_int value
@@ -376,6 +378,7 @@ let fold f init value t =
     fun sofar t value path ->
       let sofar =
         match t with
+          | Abstract name -> sofar
           | Atomic _ -> sofar
           | Tuple { components } ->
             let folder sofar (Any_component (Component (t, ix) as component)) =
@@ -610,6 +613,7 @@ module Typerepr_ref (T : Typerepr) : Typerepr with type a = T.a ref = struct
   let t = Ref T.t
 end
 
+let abstract name = Abstract name
 let __field__ ix t = Field (ix, t)
 let __record__ fields = Record { fields }
 let __summand_nullary__ ix = Summand_nullary ix

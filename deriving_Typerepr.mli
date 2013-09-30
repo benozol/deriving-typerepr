@@ -11,6 +11,7 @@ type 'a atomic =
   | Int64 : int64 atomic
 
 type 'a t = private
+  | Abstract : string -> 'a t
   | Atomic : 'a atomic -> 'a t
   | Tuple : 'a tuple -> 'a t
   | Function : string option * 'a t * 'b t -> ('a -> 'b) t
@@ -160,6 +161,8 @@ module Typerepr_option : functor (T : Typerepr) -> Typerepr with type a = T.a op
 module Typerepr_list : functor (T : Typerepr) -> Typerepr with type a = T.a list
 module Typerepr_array : functor (T : Typerepr) -> Typerepr with type a = T.a array
 module Typerepr_ref : functor (T : Typerepr) -> Typerepr with type a = T.a ref
+
+val abstract : string -> 'a t
 
 (**/**)
 
